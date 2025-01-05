@@ -1,51 +1,28 @@
 <template>
   <div class="statistic-card">
     <div class="card-header">
-      <div class="icon-wrapper" :style="{ backgroundColor: iconBg }">
-        <el-icon :style="{ color: iconColor }">
-          <component :is="icon" />
-        </el-icon>
-      </div>
-      <span class="label">{{ label }}</span>
+      <el-icon :style="{ color }"><component :is="icon" /></el-icon>
+      <span class="title">{{ title }}</span>
     </div>
     <div class="card-content">
-      <div class="value">{{ value }}</div>
-      <div class="trend" :class="{ 'up': trend > 0, 'down': trend < 0 }">
-        <el-icon><component :is="trend > 0 ? 'ArrowUp' : trend < 0 ? 'ArrowDown' : 'Minus'" /></el-icon>
-        <span>{{ Math.abs(trend) }}%</span>
+      <span class="value">{{ value }}<span v-if="unit">{{ unit }}</span></span>
+      <div class="trend" :class="trend">
+        <el-icon><ArrowUp /></el-icon>
+        <span>{{ trendValue }}</span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ArrowUp, ArrowDown, Minus } from '@element-plus/icons-vue'
-
 defineProps({
-  label: {
-    type: String,
-    required: true
-  },
-  value: {
-    type: [String, Number],
-    required: true
-  },
-  trend: {
-    type: Number,
-    default: 0
-  },
-  icon: {
-    type: String,
-    required: true
-  },
-  iconBg: {
-    type: String,
-    default: '#e6f4ff'
-  },
-  iconColor: {
-    type: String,
-    default: '#1890ff'
-  }
+  title: String,
+  value: [String, Number],
+  unit: String,
+  icon: String,
+  color: String,
+  trend: String,
+  trendValue: String
 })
 </script>
 
@@ -68,18 +45,10 @@ defineProps({
   gap: 8px;
 }
 
-.icon-wrapper {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.label {
-  color: #909399;
-  font-size: 14px;
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2f3d;
 }
 
 .card-content {

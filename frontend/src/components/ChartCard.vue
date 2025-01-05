@@ -63,49 +63,29 @@ const props = defineProps({
 
 <style scoped>
 .chart-card {
-  height: 100%;
-  width: 100%;
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
   display: flex;
   flex-direction: column;
-  background: transparent;
+  gap: 12px;
+  height: 100%;
 }
 
 .card-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
-  flex-shrink: 0;
-}
-
-.card-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #1f2f3d;
+  justify-content: space-between;
 }
 
 .chart-container {
   flex: 1;
-  position: relative;
-  height: 300px;
+  max-height: 400px;
 }
 
 .chart {
   width: 100%;
   height: 100%;
-}
-
-:deep(.el-select) {
-  margin-left: 16px;
-}
-
-:deep(.el-input__wrapper) {
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6;
-}
-
-:deep(.el-input__wrapper:focus-within) {
-  border-color: #409EFF;
 }
 </style>
