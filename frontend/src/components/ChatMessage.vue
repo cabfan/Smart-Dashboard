@@ -18,10 +18,9 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from 'vue'
+import { computed } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { sendMessageToAI } from '../utils/openai'
 
 const props = defineProps({
   content: {
@@ -35,35 +34,12 @@ const props = defineProps({
   time: {
     type: Date,
     default: () => new Date()
+  },
+  isStreaming: {
+    type: Boolean,
+    default: false
   }
 })
-
-const emit = defineEmits(['send-message'])
-
-const messageInput = ref('')
-const isTyping = ref(false)
-
-const sendMessage = async () => {
-  if (!messageInput.value.trim()) return
-
-  const userMessage = messageInput.value
-  emit('send-message', { content: userMessage, isAI: false })
-  messageInput.value = ''
-  isTyping.value = true
-
-  try {
-    const aiResponse = await sendMessageToAI(userMessage)
-    emit('send-message', { content: aiResponse, isAI: true })
-  } catch (error) {
-    console.error('Error:', error)
-    emit('send-message', { 
-      content: '抱歉，AI 助手暂时无法响应，请稍后再试。', 
-      isAI: true 
-    })
-  } finally {
-    isTyping.value = false
-  }
-}
 
 const markdownContent = computed(() => {
   if (!props.isAI) return props.content
@@ -100,7 +76,7 @@ const formatTime = (date) => {
 
 .message-user {
   margin-left: auto;
-  justify-content: flex-end;
+  justify-content: flex-start;
   flex-direction: row-reverse;
 }
 
@@ -113,7 +89,7 @@ const formatTime = (date) => {
 }
 
 .message-content {
-  max-width: 300px;
+  max-width: 800px;
   margin-top: 8px;
   text-align: left;
 }

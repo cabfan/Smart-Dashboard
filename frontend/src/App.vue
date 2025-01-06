@@ -61,37 +61,41 @@
         <div class="chat-wrapper">
           <!-- 聊天历史记录 -->
           <div class="chat-messages">
-            <div v-for="(msg, index) in messages" :key="index" 
-                 :class="['message', msg.isAI ? 'ai-message' : 'user-message']">
-              <div class="message-content">
-                {{ msg.content }}
-              </div>
-              <div class="message-time">
-                {{ formatTime(msg.time) }}
-              </div>
-            </div>
+            <ChatMessage
+              v-for="(msg, index) in messages"
+              :key="index"
+              :content="msg.content"
+              :isAI="msg.isAI"
+              :time="msg.time"
+              :isStreaming="msg.isStreaming"
+            />
           </div>
           
           <!-- 输入框区域 -->
           <div class="chat-input-wrapper">
             <div class="chat-input-container">
-              <el-input
-                v-model="messageInput"
-                type="textarea"
-                :rows="3"
-                placeholder="请输入消息..."
-                @keydown.enter.exact.prevent="sendMessage"
-              />
-              <el-button
-                class="send-button"
-                type="primary"
-                :loading="isLoading"
-                @click="sendMessage"
-              >
-                发送
-              </el-button>
+              <div class="input-with-button">
+                <el-input
+                  v-model="messageInput"
+                  type="textarea"
+                  :rows="3"
+                  placeholder="请输入消息..."
+                  @keydown.enter.exact.prevent="sendMessage"
+                  :disabled="isLoading"
+                />
+                <el-button
+                  class="send-button"
+                  type="primary"
+                  :loading="isLoading"
+                  @click="sendMessage"
+                  :style="{ position: 'absolute', right: '12px', bottom: '12px' }"
+                >
+                  发送
+                </el-button>
+              </div>
             </div>
           </div>
+          
         </div>
       </el-main>
     </el-container>
@@ -102,7 +106,7 @@
 import { ref, onMounted } from 'vue'
 import ChatMessage from './components/ChatMessage.vue'
 import { Bell, Monitor, ChatLineRound, Document, Position } from '@element-plus/icons-vue'
-import { sendMessageToAI } from './utils/openai'
+import { sendMessageToAIStream } from './utils/openai'
 
 const messages = ref([])
 const messageInput = ref('')
@@ -113,7 +117,8 @@ const initWelcomeMessage = () => {
   messages.value.push({
     content: '您好！我是您的 AI 助手，有什么可以帮您的吗？',
     isAI: true,
-    time: new Date()
+    time: new Date(),
+    isStreaming: false
   })
 }
 
@@ -128,30 +133,47 @@ const sendMessage = async () => {
   messages.value.push({
     content: userMessage,
     isAI: false,
-    time: new Date()
+    time: new Date(),
+    isStreaming: false
   });
   
   messageInput.value = '';
   isLoading.value = true;
   
   try {
-    const response = await sendMessageToAI(userMessage, messages.value);
-    
-    messages.value.push({
-      content: response,
+    // 添加AI消息占位
+    const aiMessage = {
+      content: '',
       isAI: true,
-      time: new Date()
-    });
+      time: new Date(),
+      isStreaming: true,
+      id: Date.now()  // 添加唯一ID
+    }
+    messages.value.push(aiMessage)
     
+    // 处理流式响应
+    const stream = sendMessageToAIStream(userMessage, messages.value)
+    for await (const chunk of stream) {
+      const index = messages.value.findIndex(m => m.id === aiMessage.id)
+      if (index !== -1) {
+        messages.value[index].content += chunk
+      }
+    }
   } catch (error) {
     console.error('Error:', error);
     messages.value.push({
       content: '抱歉，AI 助手暂时无法响应，请稍后再试。',
       isAI: true,
-      time: new Date()
+      time: new Date(),
+      isStreaming: false
     });
   } finally {
     isLoading.value = false;
+    // 更新最后一条消息状态
+    const lastMessage = messages.value[messages.value.length - 1]
+    if (lastMessage && lastMessage.isAI) {
+      lastMessage.isStreaming = false
+    }
   }
 };
 
