@@ -1,5 +1,5 @@
 <template>
-  <el-container class="app-container">
+  <el-container class="app-container" @keydown.enter="focusInput">
     <!-- 侧边栏 -->
     <el-aside width="260px" class="sidebar">
       <div class="logo">
@@ -60,7 +60,7 @@
       <el-main class="chat-container">
         <div class="chat-wrapper">
           <!-- 聊天历史记录 -->
-          <div class="chat-messages">
+          <div class="chat-messages" ref="messagesContainer">
             <ChatMessage
               v-for="(msg, index) in messages"
               :key="index"
@@ -76,6 +76,7 @@
             <div class="chat-input-container">
               <div class="input-with-button">
                 <el-input
+                  ref="messageInputRef"
                   v-model="messageInput"
                   type="textarea"
                   :rows="3"
@@ -103,7 +104,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch, nextTick, onUnmounted } from 'vue'
 import ChatMessage from './components/ChatMessage.vue'
 import { Bell, Monitor, ChatLineRound, Document, Position } from '@element-plus/icons-vue'
 import { sendMessageToAIStream } from './utils/openai'
@@ -111,6 +112,28 @@ import { sendMessageToAIStream } from './utils/openai'
 const messages = ref([])
 const messageInput = ref('')
 const isLoading = ref(false)
+
+// 获取消息容器的引用
+const messagesContainer = ref(null)
+
+// 自动滚动到底部
+const scrollToBottom = () => {
+  nextTick(() => {
+    if (messagesContainer.value) {
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    }
+  })
+}
+
+// 监听messages变化
+watch(messages, () => {
+  scrollToBottom()
+}, { deep: true })
+
+// 初始化时也滚动到底部
+onMounted(() => {
+  scrollToBottom()
+})
 
 // 初始化欢迎消息
 const initWelcomeMessage = () => {
@@ -177,24 +200,50 @@ const sendMessage = async () => {
   }
 };
 
-// 添加时间格式化函数
-const formatTime = (date) => {
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  }).format(new Date(date));
-};
+const messageInputRef = ref(null)
+
+const focusInput = () => {
+  if (!isLoading.value) {
+    messageInputRef.value?.focus()
+  }
+}
+
+// 添加全局事件监听器
+onMounted(() => {
+  window.addEventListener('keydown', handleGlobalKeydown)
+})
+
+// 移除全局事件监听器
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleGlobalKeydown)
+})
+
+const handleGlobalKeydown = (event) => {
+  // 检查是否按下了回车键
+  if (event.key === 'Enter' && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+    // 如果当前焦点不在输入框内
+    if (document.activeElement !== messageInputRef.value?.textarea) {
+      event.preventDefault()
+      focusInput()
+    }
+  }
+}
+
 </script>
 
 <style scoped>
+/* 添加全局样式 */
+:global(body) {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;  /* 隐藏body的滚动条 */
+  height: 100vh;
+}
+
 .app-container {
   width: 100%;
   height: 100vh;
+  overflow: hidden;  /* 隐藏容器滚动条 */
 }
 
 .sidebar {
@@ -229,7 +278,8 @@ const formatTime = (date) => {
 
 .main-container {
   margin-left: 260px;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;  /* 隐藏主容器滚动条 */
   background: #fff;
 }
 
@@ -288,18 +338,22 @@ const formatTime = (date) => {
   padding: 0;
   height: calc(100vh - 60px);
   position: relative;
+  overflow: hidden;  /* 隐藏聊天容器滚动条 */
 }
 
 .chat-wrapper {
   height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;  /* 隐藏wrapper滚动条 */
 }
 
 .chat-messages {
   flex: 1;
   overflow-y: auto;
   padding: 24px;
+  margin-bottom: 16px;
+  scroll-behavior: smooth;  /* 添加平滑滚动效果 */
 }
 
 .message {

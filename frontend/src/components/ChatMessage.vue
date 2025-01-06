@@ -21,7 +21,7 @@
       </div>
       <div v-else>
         <div v-if="!isAI" class="message-text">{{ content }}</div>
-        <div v-else class="message-markdown" v-html="markdownContent"></div>
+        <div v-else class="message-markdown markdown-body" v-html="markdownContent"></div>
       </div>
     </div>
   </div>
@@ -31,6 +31,7 @@
 import { computed } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import 'github-markdown-css/github-markdown.css'
 import { Loading, Tools } from '@element-plus/icons-vue'
 
 const props = defineProps({
@@ -54,6 +55,14 @@ const props = defineProps({
 
 const markdownContent = computed(() => {
   if (!props.isAI) return props.content
+  
+  // 配置marked
+  marked.setOptions({
+    gfm: true,  // 启用GitHub风格的Markdown
+    breaks: true,  // 自动换行
+    sanitize: false  // 禁用内置的sanitize，使用DOMPurify
+  })
+  
   return DOMPurify.sanitize(marked(props.content))
 })
 
@@ -99,7 +108,7 @@ const formatTime = (date) => {
 .message-content {
   max-width: 800px;
   margin-top: 8px;
-  text-align: left;
+  text-align: right;
 }
 
 .message-info {
@@ -129,8 +138,12 @@ const formatTime = (date) => {
   border-radius: 12px;
   line-height: 1.5;
   word-wrap: break-word;
-  white-space: pre-wrap;
+  /*white-space: pre-wrap;*/
   font-size: 14px;
+}
+.message-markdown
+{
+  text-align: left;
 }
 
 .message-ai .message-text,
@@ -172,5 +185,45 @@ const formatTime = (date) => {
 
 .is-loading {
   animation: spin 1s linear infinite;
+}
+
+/* 覆盖github-markdown-css的一些样式 */
+:deep(.markdown-body) {
+  font-size: 14px;
+  line-height: 1.6;
+  word-wrap: break-word;
+}
+
+:deep(.markdown-body pre) {
+  background-color: #f6f8fa;
+  padding: 16px;
+  border-radius: 6px;
+  overflow: auto;
+}
+
+:deep(.markdown-body code) {
+  font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+  font-size: 85%;
+  background-color: rgba(175, 184, 193, 0.2);
+  padding: 0.2em 0.4em;
+  border-radius: 6px;
+}
+
+:deep(.markdown-body table) {
+  border-collapse: collapse;
+  margin: 16px 0;
+}
+
+:deep(.markdown-body th),
+:deep(.markdown-body td) {
+  padding: 6px 13px;
+  border: 1px solid #dfe2e5;
+}
+
+:deep(.markdown-body blockquote) {
+  padding: 0 1em;
+  color: #57606a;
+  border-left: 0.25em solid #dfe2e5;
+  margin: 0;
 }
 </style> 

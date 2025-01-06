@@ -4,10 +4,11 @@ import { functions_tools } from './functionDescription';
 
 const openai = new OpenAI({
   baseURL: 'https://api.deepseek.com',
-  apiKey: 'sk-e09b1c2850754858b41d8579766b60e2',
+  apiKey: '',
   dangerouslyAllowBrowser: true
 });
 
+const llm_model = 'deepseek-chat' // gpt-4o-mini-2024-07-18 deepseek-chat
 
 // 模拟天气API
 const mockWeatherAPI = async (location) => {
@@ -15,36 +16,6 @@ const mockWeatherAPI = async (location) => {
   return `${location} 当前天气：24℃，晴`;
 };
 
-/**
- * 处理常规对话（流式版本）
- * @param {Array} messages - 完整的消息历史记录
- * @returns {AsyncGenerator<string>} - 返回AI的响应内容流
- */
-const handleRegularConversationStream = async function* (messages) {
-  const startTime = performance.now()  // 记录开始时间
-  const stream = await openai.chat.completions.create({
-    messages,
-    model: 'deepseek-chat',
-    temperature: 1.0,
-    stream: true
-  });
-
-  let firstChunkTime = null
-  for await (const chunk of stream) {
-    if (!firstChunkTime) {
-      firstChunkTime = performance.now()
-      console.log(`[PERF] 首字节响应时间: ${(firstChunkTime - startTime).toFixed(2)}ms`)
-    }
-    
-    const content = chunk.choices[0]?.delta?.content || '';
-    if (content) {
-      yield content;
-    }
-  }
-
-  const endTime = performance.now()  // 记录结束时间
-  console.log(`[PERF] 对话总耗时: ${(endTime - startTime).toFixed(2)}ms`)
-};
 
 /**
  * 处理工具调用
@@ -88,8 +59,16 @@ const handleToolCall = async function* (assistantMessage, messages) {
       };
     })
   );
-  console.log('[DEBUG] 所有工具调用结果:', toolResponses);
-  console.log('Debug: 开始发送所有工具调用结果，调用openai.chat.completions.create');
+  // console.log('[DEBUG] 开始处理工具返回值:', [
+  //   ...messages,
+  //   {
+  //     role: 'assistant',
+  //     content: assistantMessage.content || '',
+  //     tool_calls: assistantMessage.tool_calls
+  //   },
+  //   ...toolResponses
+  // ]);
+
   // 发送所有工具调用结果
   const stream = await openai.chat.completions.create({
     messages: [
@@ -101,13 +80,14 @@ const handleToolCall = async function* (assistantMessage, messages) {
       },
       ...toolResponses
     ],
-    model: 'deepseek-chat',
+    model: llm_model,
     stream: true
   });
-
+  
   for await (const chunk of stream) {
     const content = chunk.choices[0]?.delta?.content || '';
     if (content) {
+      console.log('[DEBUG] 处理工具返回值:', content);
       yield { 
         status: 'responding',
         content: content 
@@ -144,14 +124,17 @@ export const sendMessageToAIStream = async function* (message, history = []) {
       content: `你是一个智能仪表盘的助手，在正确理解用户的意图之后，
       再进行判断是否需要调用工具。所有工具我都会传递给你，
       你只需要根据用户意图进行判断是否需要调用工具，如果需要调用工具，
-      则调用工具，如果不需要调用工具，则直接返回结果。`
+      则调用工具，如果不需要调用工具，则直接返回结果。
+      请注意，判断是否调用工具，只需要判断最新一条消息的意图即可，不用关注历史消息。`
     });
     messages.push({ role: 'user', content: message });
+
+    console.log('[DEBUG] 发送的消息:', messages);
 
     // 第一步：发送消息给AI（流式版本）
     const stream = await openai.chat.completions.create({
       messages,
-      model: 'deepseek-chat',
+      model: llm_model,
       temperature: 1.0,
       tools: functions_tools,
       tool_choice: 'auto',
@@ -216,7 +199,7 @@ export const sendMessageToAIStream = async function* (message, history = []) {
         };
       }
     }
-
+    console.log('[DEBUG] 处理完所有消息:', assistantMessage);
     // 如果需要工具调用
     if (assistantMessage.tool_calls?.length > 0) {
       console.log('[DEBUG] 完整工具调用信息:', assistantMessage.tool_calls);
