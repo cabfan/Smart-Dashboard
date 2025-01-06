@@ -11,8 +11,18 @@
         <span class="message-name">{{ isAI ? 'Claude' : 'Zapz' }}</span>
         <span class="message-time">{{ formatTime(time) }}</span>
       </div>
-      <div class="message-text" v-if="!isAI">{{ content }}</div>
-      <div class="message-markdown" v-else v-html="markdownContent"></div>
+      <div v-if="status === 'thinking'" class="thinking-indicator">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        <span>正在思考...</span>
+      </div>
+      <div v-else-if="status === 'using_tool'" class="tool-indicator">
+        <el-icon class="is-loading"><Tools /></el-icon>
+        <span>正在使用工具...</span>
+      </div>
+      <div v-else>
+        <div v-if="!isAI" class="message-text">{{ content }}</div>
+        <div v-else class="message-markdown" v-html="markdownContent"></div>
+      </div>
     </div>
   </div>
 </template>
@@ -21,6 +31,7 @@
 import { computed } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { Loading, Tools } from '@element-plus/icons-vue'
 
 const props = defineProps({
   content: {
@@ -35,9 +46,9 @@ const props = defineProps({
     type: Date,
     default: () => new Date()
   },
-  isStreaming: {
-    type: Boolean,
-    default: false
+  status: {
+    type: String,
+    default: 'done'
   }
 })
 
@@ -48,9 +59,6 @@ const markdownContent = computed(() => {
 
 const formatTime = (date) => {
   return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -123,36 +131,46 @@ const formatTime = (date) => {
   word-wrap: break-word;
   white-space: pre-wrap;
   font-size: 14px;
-  text-align: left;
-}
-
-.message-user .message-content {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  margin-right: 8px;
-}
-
-.message-user .message-info {
-  flex-direction: row-reverse;
-}
-
-.message-user .message-name {
-  margin-left: 8px;
-}
-
-.message-user .message-text {
-  background-color: var(--el-color-primary);
-  color: white;
-  border-radius: 12px;
-  text-align: left;
-  margin-right: 0;
 }
 
 .message-ai .message-text,
 .message-ai .message-markdown {
   background-color: #f5f7fa;
-  color: #333;
+  color: #303133;
+}
+
+.message-user .message-text {
+  background-color: var(--el-color-primary);
+  color: #fff;
+}
+
+.thinking-indicator,
+.tool-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
   border-radius: 12px;
+  background-color: #f5f7fa;
+  color: #666;
+  font-size: 14px;
+}
+
+.tool-indicator {
+  background-color: #f0f9eb;
+  color: #67c23a;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.is-loading {
+  animation: spin 1s linear infinite;
 }
 </style> 

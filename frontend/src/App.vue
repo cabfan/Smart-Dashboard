@@ -67,7 +67,7 @@
               :content="msg.content"
               :isAI="msg.isAI"
               :time="msg.time"
-              :isStreaming="msg.isStreaming"
+              :status="msg.status"
             />
           </div>
           
@@ -134,29 +134,34 @@ const sendMessage = async () => {
     content: userMessage,
     isAI: false,
     time: new Date(),
-    isStreaming: false
+    status: 'done'  // 用户消息状态始终为done
   });
   
   messageInput.value = '';
   isLoading.value = true;
   
   try {
-    // 添加AI消息占位
     const aiMessage = {
       content: '',
       isAI: true,
       time: new Date(),
-      isStreaming: true,
-      id: Date.now()  // 添加唯一ID
+      status: 'thinking',  // 初始状态为thinking
+      id: Date.now()
     }
     messages.value.push(aiMessage)
-    
-    // 处理流式响应
+
     const stream = sendMessageToAIStream(userMessage, messages.value)
-    for await (const chunk of stream) {
+    for await (const response of stream) {
       const index = messages.value.findIndex(m => m.id === aiMessage.id)
       if (index !== -1) {
-        messages.value[index].content += chunk
+        // 更新消息状态和内容
+        messages.value[index] = {
+          ...messages.value[index],
+          status: response.status,
+          content: response.content ? 
+            messages.value[index].content + response.content : 
+            messages.value[index].content
+        }
       }
     }
   } catch (error) {
@@ -165,15 +170,10 @@ const sendMessage = async () => {
       content: '抱歉，AI 助手暂时无法响应，请稍后再试。',
       isAI: true,
       time: new Date(),
-      isStreaming: false
+      status: 'error'
     });
   } finally {
-    isLoading.value = false;
-    // 更新最后一条消息状态
-    const lastMessage = messages.value[messages.value.length - 1]
-    if (lastMessage && lastMessage.isAI) {
-      lastMessage.isStreaming = false
-    }
+    isLoading.value = false
   }
 };
 

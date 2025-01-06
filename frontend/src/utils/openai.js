@@ -9,51 +9,6 @@ const openai = new OpenAI({
 });
 
 
-/**
- * 判断是否需要调用工具
- * @param {string} message - 用户最新消息
- * @returns {Promise<Object>} - 返回AI判断结果
- */
-const checkToolUsage = async (message) => {
-  const startTime = performance.now()  // 记录开始时间
-  const systemPrompt = `
-  请分析用户的消息内容，判断是否需要调用工具。
-  如果需要调用工具，请返回以下JSON格式：
-  {
-    "need_tool": true,
-    "tool_name": "工具名称"
-  }
-  如果不需要调用工具，请返回：
-  {
-    "need_tool": false
-  }
-  当前可用工具：
-  - get_weather: 获取天气信息，需要同时满足以下条件：
-    1. 用户明确表示要查询天气信息
-    2. 用户提供了有效的地点信息
-  `;
-
-  try {
-    const response = await openai.chat.completions.create({
-      model: "deepseek-chat",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: message }
-      ],
-      response_format: { type: "json_object" }
-    });
-
-    const endTime = performance.now()  // 记录结束时间
-    console.log(`[PERF] 工具判断耗时: ${(endTime - startTime).toFixed(2)}ms`)
-    return JSON.parse(response.choices[0].message.content);
-  } catch (error) {
-    console.error('判断工具使用时出错:', error);
-    return { need_tool: false };
-  }
-};
-
-
-
 // 模拟天气API
 const mockWeatherAPI = async (location) => {
   console.log('[DEBUG] 调用模拟天气API，位置:', location);
@@ -98,7 +53,7 @@ const handleRegularConversationStream = async function* (messages) {
  * @returns {AsyncGenerator<string>} - 返回处理后的最终响应内容流
  */
 const handleToolCall = async function* (assistantMessage, messages) {
-  const startTime = performance.now()  // 记录开始时间
+  const startTime = performance.now()
   console.log('[DEBUG] 检测到工具调用:', assistantMessage.tool_calls);
 
   // 收集所有工具调用结果
@@ -118,7 +73,13 @@ const handleToolCall = async function* (assistantMessage, messages) {
           result = '未知工具调用';
       }
 
-      console.log('[DEBUG] 工具调用结果:', result);
+      console.log('[DEBUG] 工具调用结果:', {
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        name: functionName,
+        content: result
+      });
+
       return {
         role: 'tool',
         tool_call_id: toolCall.id,
@@ -127,7 +88,8 @@ const handleToolCall = async function* (assistantMessage, messages) {
       };
     })
   );
-
+  console.log('[DEBUG] 所有工具调用结果:', toolResponses);
+  console.log('Debug: 开始发送所有工具调用结果，调用openai.chat.completions.create');
   // 发送所有工具调用结果
   const stream = await openai.chat.completions.create({
     messages: [
@@ -140,17 +102,20 @@ const handleToolCall = async function* (assistantMessage, messages) {
       ...toolResponses
     ],
     model: 'deepseek-chat',
-    stream: true  // 启用流式输出
+    stream: true
   });
 
   for await (const chunk of stream) {
     const content = chunk.choices[0]?.delta?.content || '';
     if (content) {
-      yield content;
+      yield { 
+        status: 'responding',
+        content: content 
+      };
     }
   }
 
-  const endTime = performance.now()  // 记录结束时间
+  const endTime = performance.now()
   console.log(`[PERF] 工具调用总耗时: ${(endTime - startTime).toFixed(2)}ms`)
 };
 
@@ -163,32 +128,9 @@ const handleToolCall = async function* (assistantMessage, messages) {
 export const sendMessageToAIStream = async function* (message, history = []) {
   try {
     console.log('[DEBUG] 开始处理消息:', message);
+    const startTime = performance.now()
 
-    // 首先检查是否需要使用工具
-    const toolCheck = await checkToolUsage(message);
-    if (!toolCheck.need_tool) {
-      console.log('[DEBUG] 不需要工具调用，使用常规对话');
-      // 转换历史消息格式
-      const messages = history.map(msg => ({
-        role: msg.isAI ? 'assistant' : 'user',
-        content: msg.content
-      }));
-      
-      // 添加系统消息和用户最新消息
-      messages.unshift({
-        role: 'system',
-        content: '你是一个智能仪表盘的助手。'
-      });
-      messages.push({ role: 'user', content: message });
-
-      // 使用流式对话处理
-      yield* handleRegularConversationStream(messages);
-      return;
-    }
-
-    console.log('[DEBUG] 需要工具调用，准备使用工具:', toolCheck.tool_name);
-
-    // 转换历史消息格式（包含工具调用信息）
+    // 转换历史消息格式
     const messages = history.map(msg => ({
       role: msg.isAI ? 'assistant' : 'user',
       content: msg.content,
@@ -199,30 +141,103 @@ export const sendMessageToAIStream = async function* (message, history = []) {
     // 添加系统消息和用户最新消息
     messages.unshift({
       role: 'system',
-      content: '你是一个智能仪表盘的助手。仅在用户明确要求天气信息并提供有效地点时调用"get_weather"功能。'
+      content: `你是一个智能仪表盘的助手，在正确理解用户的意图之后，
+      再进行判断是否需要调用工具。所有工具我都会传递给你，
+      你只需要根据用户意图进行判断是否需要调用工具，如果需要调用工具，
+      则调用工具，如果不需要调用工具，则直接返回结果。`
     });
     messages.push({ role: 'user', content: message });
 
-    // 第一步：发送消息给AI
-    const completion = await openai.chat.completions.create({
+    // 第一步：发送消息给AI（流式版本）
+    const stream = await openai.chat.completions.create({
       messages,
       model: 'deepseek-chat',
       temperature: 1.0,
-      tools: functions_tools, // 使用导入的工具定义，来自 functionDescription.js
-      tool_choice: 'auto'
+      tools: functions_tools,
+      tool_choice: 'auto',
+      stream: true
     });
 
-    console.log('[DEBUG] API响应:', completion);
-    const assistantMessage = completion.choices[0].message;
+    let assistantMessage = { content: '', tool_calls: [] };
+    let isFirstChunk = true;
+    let firstChunkTime = null;
 
-    if (assistantMessage.tool_calls) {
+    for await (const chunk of stream) {
+      if (!firstChunkTime) {
+        firstChunkTime = performance.now()
+        console.log(`[PERF] 首字节响应时间: ${(firstChunkTime - startTime).toFixed(2)}ms`)
+      }
+
+      if (isFirstChunk) {
+        yield { status: 'thinking' };  // 通知UI正在思考
+        isFirstChunk = false;
+      }
+
+      // 收集消息内容
+      if (chunk.choices[0]?.delta?.content) {
+        assistantMessage.content += chunk.choices[0].delta.content;
+      }
+
+      // 收集工具调用信息
+      if (chunk.choices[0]?.delta?.tool_calls) {
+        // 确保tool_calls数组存在
+        if (!assistantMessage.tool_calls) {
+          assistantMessage.tool_calls = [];
+        }
+        
+        // 处理每个工具调用
+        chunk.choices[0].delta.tool_calls.forEach((toolCall, index) => {
+          if (!assistantMessage.tool_calls[index]) {
+            assistantMessage.tool_calls[index] = {
+              id: toolCall.id || '',
+              type: 'function',
+              function: {
+                name: '',
+                arguments: ''
+              }
+            };
+          }
+          
+          // 更新工具调用信息
+          if (toolCall.function?.name) {
+            assistantMessage.tool_calls[index].function.name += toolCall.function.name;
+          }
+          if (toolCall.function?.arguments) {
+            assistantMessage.tool_calls[index].function.arguments += toolCall.function.arguments;
+          }
+        });
+      }
+
+      // 如果已经有内容，则逐步返回
+      if (chunk.choices[0]?.delta?.content) {
+        yield { 
+          status: 'responding',
+          content: chunk.choices[0].delta.content 
+        };
+      }
+    }
+
+    // 如果需要工具调用
+    if (assistantMessage.tool_calls?.length > 0) {
+      console.log('[DEBUG] 完整工具调用信息:', assistantMessage.tool_calls);
+      yield { status: 'using_tool' };  // 通知UI正在使用工具
       yield* handleToolCall(assistantMessage, messages);
       return;
     }
 
-    yield assistantMessage.content || '';
+    // 如果不需要工具调用，直接返回最终内容
+    yield { 
+      status: 'done',
+      content: assistantMessage.content 
+    };
+
+    const endTime = performance.now()
+    console.log(`[PERF] 处理消息总耗时: ${(endTime - startTime).toFixed(2)}ms`)
   } catch (error) {
     console.error('[ERROR] 发生错误:', error);
-    yield '抱歉，AI 助手暂时无法响应，请稍后再试。';
+    yield { 
+      status: 'error',
+      content: '抱歉，AI 助手暂时无法响应，请稍后再试。'
+    };
   }
 };
