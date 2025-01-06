@@ -1,21 +1,38 @@
 import OpenAI from 'openai';
-// 从functionDescription导入工具定义
 import { functions_tools } from './functionDescription';
 
-const openai = new OpenAI({
-  baseURL: 'https://api.deepseek.com',
-  apiKey: '',
-  dangerouslyAllowBrowser: true
-});
+// 从 localStorage 获取设置
+const getSettings = () => {
+  const settings = JSON.parse(localStorage.getItem('aiSettings') || '{}')
+  return {
+    baseURL: settings.baseURL || 'https://api.deepseek.com',
+    apiKey: settings.apiKey || '',
+    model: settings.model || 'deepseek-chat'
+  }
+}
 
-const llm_model = 'deepseek-chat' // gpt-4o-mini-2024-07-18 deepseek-chat
+// 初始化 OpenAI 实例
+const initOpenAI = () => {
+  const { baseURL, apiKey } = getSettings()
+  return new OpenAI({
+    baseURL,
+    apiKey,
+    dangerouslyAllowBrowser: true
+  })
+}
+
+// 动态获取模型
+const getModel = () => {
+  return getSettings().model
+}
+
+const openai = initOpenAI()
 
 // 模拟天气API
 const mockWeatherAPI = async (location) => {
   console.log('[DEBUG] 调用模拟天气API，位置:', location);
   return `${location} 当前天气：24℃，晴`;
 };
-
 
 /**
  * 处理工具调用
@@ -44,13 +61,6 @@ const handleToolCall = async function* (assistantMessage, messages) {
           result = '未知工具调用';
       }
 
-      console.log('[DEBUG] 工具调用结果:', {
-        role: 'tool',
-        tool_call_id: toolCall.id,
-        name: functionName,
-        content: result
-      });
-
       return {
         role: 'tool',
         tool_call_id: toolCall.id,
@@ -59,17 +69,14 @@ const handleToolCall = async function* (assistantMessage, messages) {
       };
     })
   );
-  // console.log('[DEBUG] 开始处理工具返回值:', [
-  //   ...messages,
-  //   {
-  //     role: 'assistant',
-  //     content: assistantMessage.content || '',
-  //     tool_calls: assistantMessage.tool_calls
-  //   },
-  //   ...toolResponses
-  // ]);
 
-  // 发送所有工具调用结果
+  // 先返回工具调用结果
+  yield {
+    status: 'using_tool',
+    content: toolResponses.map(res => res.content).join('\n')
+  };
+
+  // 发送所有工具调用结果给AI
   const stream = await openai.chat.completions.create({
     messages: [
       ...messages,
@@ -80,19 +87,30 @@ const handleToolCall = async function* (assistantMessage, messages) {
       },
       ...toolResponses
     ],
-    model: llm_model,
+    temperature: 0.0,
+    model: getModel(),
     stream: true
   });
-  
+
+  // 处理AI的最终响应
+  let finalContent = '';
   for await (const chunk of stream) {
     const content = chunk.choices[0]?.delta?.content || '';
     if (content) {
-      console.log('[DEBUG] 处理工具返回值:', content);
-      yield { 
+      finalContent += content;
+      yield {
         status: 'responding',
-        content: content 
+        content: content
       };
     }
+  }
+
+  // 确保返回最终内容
+  if (finalContent) {
+    yield {
+      status: 'done',
+      content: finalContent
+    };
   }
 
   const endTime = performance.now()
@@ -121,11 +139,14 @@ export const sendMessageToAIStream = async function* (message, history = []) {
     // 添加系统消息和用户最新消息
     messages.unshift({
       role: 'system',
-      content: `你是一个智能仪表盘的助手，在正确理解用户的意图之后，
-      再进行判断是否需要调用工具。所有工具我都会传递给你，
-      你只需要根据用户意图进行判断是否需要调用工具，如果需要调用工具，
-      则调用工具，如果不需要调用工具，则直接返回结果。
-      请注意，判断是否调用工具，只需要判断最新一条消息的意图即可，不用关注历史消息。`
+      content: `你是一个有用的助手，可以根据用户需求调用以下工具：
+1. get_weather：获取特定地点的当前天气。
+
+**重要规则**：
+- 仅在用户明确要求使用工具时调用工具。
+- 如果用户只是提到相关关键词但没有明确要求使用工具，请不要调用工具。
+- 如果用户输入的内容不明确，请询问用户是否需要使用工具。例如：
+  - 用户输入：“杭州” → 你可以回复：“您是否需要获取杭州的天气信息？”`
     });
     messages.push({ role: 'user', content: message });
 
@@ -134,8 +155,8 @@ export const sendMessageToAIStream = async function* (message, history = []) {
     // 第一步：发送消息给AI（流式版本）
     const stream = await openai.chat.completions.create({
       messages,
-      model: llm_model,
-      temperature: 1.0,
+      model: getModel(),
+      temperature: 0.0,
       tools: functions_tools,
       tool_choice: 'auto',
       stream: true
