@@ -1,6 +1,6 @@
 import { createChatCompletion } from './chatUtils';
 import { checkIfToolIsNeeded } from './functionDescription';
-import { mockWeatherAPI, mockQueryPersonnelArchive } from './toolFunctions';
+import { mockWeatherAPI, mockQueryPersonnelArchive, getCurrentTime } from './toolFunctions';
 
 /**
  * 处理工具调用
@@ -28,15 +28,25 @@ const handleToolCall = async function* (assistantMessage, messages) {
         case 'query_personnel_archive':
           result = await mockQueryPersonnelArchive(functionArgs.sql);
           break;
+        case 'get_current_time':
+          result = await getCurrentTime();
+          break;
         default:
           result = '未知工具调用';
       }
+
+      // 确保返回有效结果
+      if (!result) {
+        result = '工具调用成功，但未返回有效信息';
+      }
+
+      console.log('[DEBUG] 工具调用结果:', result);
 
       return {
         role: 'tool',
         tool_call_id: toolCall.id,
         name: functionName,
-        content: result
+        content: JSON.stringify(result) // 确保内容格式正确
       };
     })
   );
@@ -44,7 +54,16 @@ const handleToolCall = async function* (assistantMessage, messages) {
   // 先返回工具调用结果
   yield {
     status: 'using_tool',
-    content: toolResponses.map(res => res.content).join('\n')
+    content: toolResponses
+      .map(res => {
+        try {
+          const parsed = JSON.parse(res.content);
+          return typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
+        } catch {
+          return res.content;
+        }
+      })
+      .join('\n')
   };
 
   // 发送所有工具调用结果给AI
@@ -58,52 +77,55 @@ const handleToolCall = async function* (assistantMessage, messages) {
       },
       ...toolResponses
     ],
-    temperature: 0.0
+    temperature: 1.3,
+    tool_choice: 'none',  // 强制不使用工具
+    tools: []  // 明确不传递工具
   });
 
   // 处理AI的最终响应
   let finalContent = '';
-  let isFirstResponse = true;
-  
+  let hasContent = false;
+
   for await (const chunk of stream) {
-    const content = chunk.choices[0]?.delta?.content || '';
-    //console.log('[DEBUG] 处理AI的最终响应:', content);
-    if (content) {
-      finalContent += content;
-      
-      // 如果是第一个响应块，先返回 using_tool 状态
-      if (isFirstResponse) {
-        yield {
-          status: 'responding',
-          content: '工具调用成功，正在生成响应...'
-        };
-        isFirstResponse = false;
-      }
-      
-      // 返回实时内容
+    // 检查是否有内容
+    if (chunk.choices[0]?.delta?.content) {
+      finalContent += chunk.choices[0].delta.content;
+      hasContent = true;
       yield {
         status: 'responding',
-        content: content
+        content: chunk.choices[0].delta.content
       };
     }
   }
 
-  // 确保返回最终内容
-  if (finalContent) {
+  // 如果没有内容，直接返回工具调用结果
+  if (!hasContent) {
+    console.log('[DEBUG] 没有生成内容，返回工具调用结果');
+    const toolResults = toolResponses.map(res => {
+      try {
+        const parsed = JSON.parse(res.content);
+        return typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
+      } catch {
+        return res.content;
+      }
+    }).join('\n');
+    
+    yield {
+      status: 'done',
+      content: toolResults || '工具调用成功，但没有返回内容。'
+    };
+  } else {
     yield {
       status: 'done',
       content: finalContent
-    };
-  } else {
-    // 如果没有内容，返回默认提示
-    yield {
-      status: 'done',
-      content: '工具调用成功，但没有返回内容。'
     };
   }
 
   const endTime = performance.now()
   console.log(`[PERF] 工具调用总耗时: ${(endTime - startTime).toFixed(2)}ms`)
+
+  console.log('[DEBUG] 工具调用原始结果:', toolResponses);
+  console.log('[DEBUG] 最终内容:', finalContent);
 };
 
 /**
@@ -131,13 +153,15 @@ export const sendMessageToAIStream = async function* (message, history = []) {
       content: `你是一个有用的助手，可以根据用户需求调用以下工具：
                 1. get_weather：获取特定地点的当前天气。
                 2. query_personnel_archive：查询人员档案信息。
+                3. get_current_time：获取当前北京时间。
 
                 **重要规则**：
                 - 仅在用户明确要求使用工具时调用工具。
                 - 如果用户只是提到相关关键词但没有明确要求使用工具，请不要调用工具。
                 - 如果用户输入的内容不明确，请询问用户是否需要使用工具。例如：
                   - 用户输入："杭州" → 你可以回复："您是否需要获取杭州的天气信息？"
-                  - 用户输入："人员信息" → 你可以回复："您是否需要查询人员档案信息？"`
+                  - 用户输入："人员信息" → 你可以回复："您是否需要查询人员档案信息？"
+                  - 用户输入："现在几点了" → 你可以回复："您是否需要获取当前北京时间？"`
     });
     messages.push({ role: 'user', content: message });
 

@@ -59,6 +59,31 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok' });
 });
 
+// 添加获取当前时间的路由
+app.get('/api/current-time', async (req, res) => {
+  try {
+    const response = await fetch('https://f.m.suning.com/api/ct.do');
+    const data = await response.json();
+    
+    // 检查API响应
+    if (data.code !== '1') {
+      throw new Error('获取时间失败');
+    }
+
+    // 返回时间戳
+    res.json({
+      success: true,
+      timestamp: data.currentTime
+    });
+  } catch (error) {
+    console.error('[ERROR] 获取当前时间失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取当前时间失败'
+    });
+  }
+});
+
 // 启动服务器
 const server = app.listen(port, () => {
     console.log(`Server running on port ${port}`);

@@ -33,6 +33,13 @@ export const functions_tools = [
                 required: ["sql"]
             }
         }
+    },
+    {
+        type: "function",
+        function: {
+            name: "get_current_time",
+            description: "获取当前北京时间。"
+        }
     }
 ];
 
@@ -70,6 +77,9 @@ export const checkIfToolIsNeeded = (toolCalls, messages) => {
             return false;
           }
           break;
+
+        case "get_current_time":
+          break;
   
         default:
           console.log(`未知工具调用: ${toolName}`);
@@ -83,14 +93,14 @@ export const checkIfToolIsNeeded = (toolCalls, messages) => {
 
 // 检查用户输入是否与天气相关
 export function isWeatherRelatedQuery(messages) {
-    const userMessage = messages.find(msg => msg.role === "user")?.content || "";
+    const userMessage = messages[messages.length - 1]?.content || "";
     const weatherKeywords = ["天气", "温度", "天气预报", "下雨", "晴天"];
     return weatherKeywords.some(keyword => userMessage.toLowerCase().includes(keyword));
 }
 
 // 检查用户输入是否与人员档案相关
 export function isPersonnelArchiveNeeded(messages) {
-    const userMessage = messages.find(msg => msg.role === "user")?.content || "";
+    const userMessage = messages[messages.length - 1]?.content || "";
     const keywords = ["人员档案", "档案", "人员", "查询"];
     return keywords.some(keyword => userMessage.toLowerCase().includes(keyword));
 }
