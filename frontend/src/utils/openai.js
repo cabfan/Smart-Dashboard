@@ -231,7 +231,6 @@ export const sendMessageToAIStream = async function* (message, history = []) {
           newSystemPrompt, // 添加系统提示词
           lastMessage
         ];
-        console.log(newChatMessages)
 
         // 不需要调用工具时，重新调用AI输出内容，这里可以将工具的tool_choice设置为none
         const stream = await createChatCompletion({
