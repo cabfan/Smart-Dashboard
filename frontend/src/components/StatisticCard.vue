@@ -1,91 +1,83 @@
 <template>
-  <div class="statistic-card">
-    <div class="card-header">
-      <el-icon :style="{ color }"><component :is="icon" /></el-icon>
-      <span class="title">{{ title }}</span>
-    </div>
+  <el-card class="statistic-card">
     <div class="card-content">
-      <span class="value">{{ value }}<span v-if="unit">{{ unit }}</span></span>
-      <div class="trend" :class="trend">
-        <el-icon><ArrowUp /></el-icon>
-        <span>{{ trendValue }}</span>
-      </div>
+      <span class="card-value" :style="{ color: valueColor }">
+        {{ formattedValue }}
+      </span>
     </div>
-  </div>
+    <div v-if="description" class="card-footer">
+      {{ description }}
+    </div>
+  </el-card>
 </template>
 
 <script setup>
-defineProps({
-  title: String,
-  value: [String, Number],
-  unit: String,
-  icon: String,
-  color: String,
-  trend: String,
-  trendValue: String
+import { computed } from 'vue'
+
+const props = defineProps({
+  title: {
+    type: String,
+    default: '统计指标'
+  },
+  value: {
+    type: [Number, String],
+    required: true
+  },
+  icon: {
+    type: String,
+    default: 'el-icon-data-line'
+  },
+  color: {
+    type: String,
+    default: '#409EFF'
+  },
+  description: {
+    type: String,
+    default: ''
+  },
+  format: {
+    type: String,
+    default: 'number' // 可选：number, percent, currency
+  }
 })
+
+// 计算属性
+const formattedValue = computed(() => {
+  
+  switch (props.format) {
+    case 'percent':
+      return `${props.value}%`
+    case 'currency':
+      return `¥${props.value.toLocaleString()}`
+    default:
+      return props.value.toLocaleString()
+  }
+})
+
+const valueColor = computed(() => props.color)
+
 </script>
 
 <style scoped>
 .statistic-card {
   background: white;
   border-radius: 8px;
-  padding: 16px;
   box-shadow: 0 1px 2px rgba(0,0,0,0.1);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 12px;
-  height: 100%;
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1f2f3d;
+  justify-content: center;
 }
 
 .card-content {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
+  text-align: center;
+  width: 600px;
+  height: 300px;
 }
 
-.value {
-  font-size: 24px;
-  font-weight: 600;
-  color: #1f2f3d;
-  line-height: 1;
-}
-
-.trend {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.card-footer {
+  margin-top: 8px;
   font-size: 12px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: #f0f0f0;
   color: #909399;
-}
-
-.trend.up {
-  background: #f6ffed;
-  color: #52c41a;
-}
-
-.trend.down {
-  background: #fff2e8;
-  color: #fa8c16;
-}
-
-.el-icon {
-  font-size: 16px;
+  text-align: center;
 }
 </style>

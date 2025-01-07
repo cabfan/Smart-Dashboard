@@ -1,38 +1,6 @@
-import OpenAI from 'openai';
-import { functions_tools } from './functionDescription';
-
-// 从 localStorage 获取设置
-const getSettings = () => {
-  const settings = JSON.parse(localStorage.getItem('aiSettings') || '{}')
-  return {
-    baseURL: settings.baseURL || 'https://api.deepseek.com',
-    apiKey: settings.apiKey || '',
-    model: settings.model || 'deepseek-chat'
-  }
-}
-
-// 初始化 OpenAI 实例
-const initOpenAI = () => {
-  const { baseURL, apiKey } = getSettings()
-  return new OpenAI({
-    baseURL,
-    apiKey,
-    dangerouslyAllowBrowser: true
-  })
-}
-
-// 动态获取模型
-const getModel = () => {
-  return getSettings().model
-}
-
-const openai = initOpenAI()
-
-// 模拟天气API
-const mockWeatherAPI = async (location) => {
-  console.log('[DEBUG] 调用模拟天气API，位置:', location);
-  return `${location} 当前天气：24℃，晴`;
-};
+import { createChatCompletion } from './chatUtils';
+import { checkIfToolIsNeeded } from './functionDescription';
+import { mockWeatherAPI, mockQueryPersonnelArchive } from './toolFunctions';
 
 /**
  * 处理工具调用
@@ -57,6 +25,9 @@ const handleToolCall = async function* (assistantMessage, messages) {
         case 'get_weather':
           result = await mockWeatherAPI(functionArgs.location);
           break;
+        case 'query_personnel_archive':
+          result = await mockQueryPersonnelArchive(functionArgs.sql);
+          break;
         default:
           result = '未知工具调用';
       }
@@ -77,7 +48,7 @@ const handleToolCall = async function* (assistantMessage, messages) {
   };
 
   // 发送所有工具调用结果给AI
-  const stream = await openai.chat.completions.create({
+  const stream = await createChatCompletion({
     messages: [
       ...messages,
       {
@@ -87,17 +58,29 @@ const handleToolCall = async function* (assistantMessage, messages) {
       },
       ...toolResponses
     ],
-    temperature: 0.0,
-    model: getModel(),
-    stream: true
+    temperature: 0.0
   });
 
   // 处理AI的最终响应
   let finalContent = '';
+  let isFirstResponse = true;
+  
   for await (const chunk of stream) {
     const content = chunk.choices[0]?.delta?.content || '';
+    //console.log('[DEBUG] 处理AI的最终响应:', content);
     if (content) {
       finalContent += content;
+      
+      // 如果是第一个响应块，先返回 using_tool 状态
+      if (isFirstResponse) {
+        yield {
+          status: 'responding',
+          content: '工具调用成功，正在生成响应...'
+        };
+        isFirstResponse = false;
+      }
+      
+      // 返回实时内容
       yield {
         status: 'responding',
         content: content
@@ -110,6 +93,12 @@ const handleToolCall = async function* (assistantMessage, messages) {
     yield {
       status: 'done',
       content: finalContent
+    };
+  } else {
+    // 如果没有内容，返回默认提示
+    yield {
+      status: 'done',
+      content: '工具调用成功，但没有返回内容。'
     };
   }
 
@@ -140,26 +129,24 @@ export const sendMessageToAIStream = async function* (message, history = []) {
     messages.unshift({
       role: 'system',
       content: `你是一个有用的助手，可以根据用户需求调用以下工具：
-1. get_weather：获取特定地点的当前天气。
+                1. get_weather：获取特定地点的当前天气。
+                2. query_personnel_archive：查询人员档案信息。
 
-**重要规则**：
-- 仅在用户明确要求使用工具时调用工具。
-- 如果用户只是提到相关关键词但没有明确要求使用工具，请不要调用工具。
-- 如果用户输入的内容不明确，请询问用户是否需要使用工具。例如：
-  - 用户输入：“杭州” → 你可以回复：“您是否需要获取杭州的天气信息？”`
+                **重要规则**：
+                - 仅在用户明确要求使用工具时调用工具。
+                - 如果用户只是提到相关关键词但没有明确要求使用工具，请不要调用工具。
+                - 如果用户输入的内容不明确，请询问用户是否需要使用工具。例如：
+                  - 用户输入："杭州" → 你可以回复："您是否需要获取杭州的天气信息？"
+                  - 用户输入："人员信息" → 你可以回复："您是否需要查询人员档案信息？"`
     });
     messages.push({ role: 'user', content: message });
 
     console.log('[DEBUG] 发送的消息:', messages);
 
     // 第一步：发送消息给AI（流式版本）
-    const stream = await openai.chat.completions.create({
+    const stream = await createChatCompletion({
       messages,
-      model: getModel(),
-      temperature: 0.0,
-      tools: functions_tools,
-      tool_choice: 'auto',
-      stream: true
+      temperature: 0.0
     });
 
     let assistantMessage = { content: '', tool_calls: [] };
@@ -214,26 +201,49 @@ export const sendMessageToAIStream = async function* (message, history = []) {
 
       // 如果已经有内容，则逐步返回
       if (chunk.choices[0]?.delta?.content) {
+        //console.log('[DEBUG] 返回内容:', chunk.choices[0].delta.content);
         yield { 
           status: 'responding',
           content: chunk.choices[0].delta.content 
         };
       }
     }
-    console.log('[DEBUG] 处理完所有消息:', assistantMessage);
     // 如果需要工具调用
     if (assistantMessage.tool_calls?.length > 0) {
-      console.log('[DEBUG] 完整工具调用信息:', assistantMessage.tool_calls);
-      yield { status: 'using_tool' };  // 通知UI正在使用工具
-      yield* handleToolCall(assistantMessage, messages);
+      // 检查是否需要调用工具
+      const shouldCallTool = checkIfToolIsNeeded(assistantMessage.tool_calls, messages);
+      if (shouldCallTool) {
+        yield { status: 'using_tool' };  // 通知UI正在使用工具
+        yield* handleToolCall(assistantMessage, messages);
+      } else {
+        yield { 
+          status: 'responding',
+          content: '哎呀，工具好像罢工了！你可以稍后再试试，或者我们聊点别的？比如，你知道为什么程序员总是分不清万圣节和圣诞节吗？因为 Oct 31 = Dec 25！😄'
+        };
+        /*
+        // 不需要调用工具时，重新调用AI输出内容，这里可以将工具的tool_choice设置为none
+        const stream = await createChatCompletion({
+          messages,
+          temperature: 1.3,
+          tool_choice: 'none',
+          tools: []
+        });
+        for await (const chunk of stream) {
+          yield { 
+            status: 'responding',
+            content: chunk.choices[0]?.delta?.content || '' 
+          };
+        }
+        */
+      }
       return;
+    } else {
+      // 如果不需要工具调用，直接返回最终内容
+      yield { 
+        status: 'done',
+        content: assistantMessage.content 
+      };
     }
-
-    // 如果不需要工具调用，直接返回最终内容
-    yield { 
-      status: 'done',
-      content: assistantMessage.content 
-    };
 
     const endTime = performance.now()
     console.log(`[PERF] 处理消息总耗时: ${(endTime - startTime).toFixed(2)}ms`)

@@ -9,6 +9,8 @@
         :isAI="message.isAI"
         :time="message.time"
         :status="message.status"
+        :component-type="message.componentType"
+        :component-data="message.componentData"
       />
     </div>
 
@@ -45,7 +47,53 @@ import { sendMessageToAIStream } from '../utils/openai'
 import { Promotion, Loading } from '@element-plus/icons-vue'
 
 // 消息列表
-const messages = ref([])
+const messages = ref([
+  // 示例消息
+  {
+    content: '您好Zapz，昨日工作表现良好，下面是你的销售数据。',
+    isAI: true,
+    time: new Date(),
+    status: 'done'
+  },
+  {
+    content: '',
+    isAI: true,
+    time: new Date(),
+    status: 'done',
+    componentType: 'ChartCard',
+    componentData: {
+      description: '昨日西风凋碧树，独上高楼，望尽天涯路。衣带渐宽终不悔，为伊消得人憔悴。众里寻他千百度，蓦然回首，那人却在，灯火阑珊处。',
+      option: {
+        title: {
+          text: '销售趋势',
+          left: 'center'
+        },
+        tooltip: {
+          trigger: 'axis'
+        },
+        xAxis: {
+          type: 'category',
+          data: ['1月', '2月', '3月', '4月']
+        },
+        yAxis: {
+          type: 'value'
+        },
+        series: [
+          {
+            name: '销售额',
+            type: 'line',
+            data: [120, 200, 150, 300],
+            smooth: true,
+            itemStyle: {
+              color: '#409EFF'
+            }
+          }
+        ]
+      }
+    }
+  }
+])
+
 const messageInput = ref('')
 const isLoading = ref(false)
 const messagesContainer = ref(null)
@@ -93,7 +141,6 @@ const initWelcomeMessage = () => {
 
 // 在 setup 中添加 isSending 状态
 const isSending = ref(false)
-
 // 发送消息
 const sendMessage = async () => {
   if (!messageInput.value.trim() || isLoading.value) return;
@@ -123,7 +170,6 @@ const sendMessage = async () => {
       status: 'thinking'
     };
     messages.value.push(aiMessage);
-    console.log('[DEBUG] 历史消息:', messages.value);
     // 处理AI响应
     let isFirstChunk = true;
     for await (const chunk of sendMessageToAIStream(userMessage, messages.value)) {
@@ -131,14 +177,21 @@ const sendMessage = async () => {
         aiMessage.status = chunk.status;
         isFirstChunk = false;
       }
+      // 使用 Vue 的响应式更新方式
+      messages.value = messages.value.map((msg, index) => {
+        if (index === messages.value.length - 1) {
+          return {
+            ...msg,
+            content: chunk.status === 'responding' ? msg.content + chunk.content : msg.content,
+            status: chunk.status
+          }
+        }
+        return msg
+      })
 
-      // 更新最后一条消息
-      const lastMessage = messages.value[messages.value.length - 1];
-      if (chunk.status === 'responding') {
-        lastMessage.content += chunk.content;
-      } else {
-        lastMessage.status = chunk.status;
-      }
+      // 确保 DOM 更新
+      await nextTick()
+      scrollToBottom()
     }
   } catch (error) {
     console.error('发送消息失败:', error);
@@ -178,6 +231,17 @@ onUnmounted(() => {
   overflow-y: auto;
   padding: 20px;
   margin-bottom: 20px;
+  border-radius: 8px;
+}
+
+.chat-container > * {
+  margin-bottom: 16px;
+}
+
+.message-ai .card-container {
+  width: 100%;
+  max-width: 600px;
+  margin: 8px 0;
 }
 
 .chat-input-container {

@@ -33,14 +33,13 @@ defineProps({
 
 <style scoped>
 .timeline-card {
+  width: 600px;
+  height: 300px;
   background: white;
   border-radius: 8px;
-  padding: 16px;
+  padding: 24px;
   box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  height: 100%;
+  overflow-y: auto;
 }
 
 .card-header {

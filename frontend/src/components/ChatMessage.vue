@@ -21,18 +21,30 @@
       </div>
       <div v-else>
         <div v-if="!isAI" class="message-text">{{ content }}</div>
-        <div v-else class="message-markdown markdown-body" v-html="markdownContent"></div>
+        <div v-else>
+          <component
+            v-if="componentType"
+            :is="getComponent(componentType)"
+            v-bind="componentData"
+          />
+          <div v-else class="message-markdown markdown-body" v-html="parsedContent"></div>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import 'github-markdown-css/github-markdown.css'
 import { Loading, Tools } from '@element-plus/icons-vue'
+import ChartCard from './ChartCard.vue'
+import StatisticCard from './StatisticCard.vue'
+import TimelineCard from './TimelineCard.vue'
+import hljs from 'highlight.js'
+import 'highlight.js/styles/github.css'
 
 const props = defineProps({
   content: {
@@ -50,20 +62,70 @@ const props = defineProps({
   status: {
     type: String,
     default: 'done'
+  },
+  componentType: {
+    type: String,
+    default: ''
+  },
+  componentData: {
+    type: Object,
+    default: () => ({})
   }
 })
 
-const markdownContent = computed(() => {
-  if (!props.isAI) return props.content
-  
-  // 配置marked
-  marked.setOptions({
-    gfm: true,  // 启用GitHub风格的Markdown
-    breaks: true,  // 自动换行
-    sanitize: false  // 禁用内置的sanitize，使用DOMPurify
-  })
-  
-  return DOMPurify.sanitize(marked(props.content))
+const displayContent = ref('')
+const currentContent = computed(() => props.content)
+let typingTimeout = null
+
+// 配置 marked
+marked.setOptions({
+  gfm: true,
+  breaks: true,
+  sanitize: false,
+  highlight: function(code, lang) {
+    const language = hljs.getLanguage(lang) ? lang : 'plaintext'
+    return hljs.highlight(code, { language }).value
+  }
+})
+
+// 添加 markdown 解析
+const parsedContent = computed(() => {
+  if (!props.isAI || props.componentType) return displayContent.value
+  return DOMPurify.sanitize(marked.parse(displayContent.value))
+})
+
+watch(currentContent, (newVal) => {
+  // 清除之前的定时器
+  if (typingTimeout) {
+    clearTimeout(typingTimeout)
+  }
+
+  // 如果内容变短了（比如清空），直接更新
+  if (newVal.length < displayContent.value.length) {
+    displayContent.value = newVal
+    return
+  }
+
+  // 流式显示新内容
+  const newChars = newVal.slice(displayContent.value.length)
+  let index = 0
+
+  const typeNextChar = () => {
+    if (index < newChars.length) {
+      displayContent.value += newChars[index]
+      index++
+      typingTimeout = setTimeout(typeNextChar, 20)
+    }
+  }
+
+  typeNextChar()
+}, { immediate: true })
+
+// 组件卸载时清除定时器
+onUnmounted(() => {
+  if (typingTimeout) {
+    clearTimeout(typingTimeout)
+  }
 })
 
 const formatTime = (date) => {
@@ -73,6 +135,16 @@ const formatTime = (date) => {
     second: '2-digit',
     hour12: false
   }).format(date)
+}
+
+const componentsMap = {
+  'StatisticCard': StatisticCard,
+  'ChartCard': ChartCard,
+  'TimelineCard': TimelineCard
+}
+
+const getComponent = (type) => {
+  return componentsMap[type] || null
 }
 </script>
 
