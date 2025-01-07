@@ -144,7 +144,7 @@ export const sendMessageToAIStream = async function* (message, history = []) {
     console.log('[DEBUG] 发送的消息:', messages);
 
     // 第一步：发送消息给AI（流式版本）
-    const stream = await createChatCompletion({
+    const stream = await createChatCompletion({ 
       messages,
       temperature: 0.0
     });
@@ -216,14 +216,26 @@ export const sendMessageToAIStream = async function* (message, history = []) {
         yield { status: 'using_tool' };  // 通知UI正在使用工具
         yield* handleToolCall(assistantMessage, messages);
       } else {
-        yield { 
-          status: 'responding',
-          content: '哎呀，工具好像罢工了！你可以稍后再试试，或者我们聊点别的？比如，你知道为什么程序员总是分不清万圣节和圣诞节吗？因为 Oct 31 = Dec 25！😄'
+        // 以下是不需要调用工具时，重新调用AI输出内容
+
+        //获取messages最后一条
+        const lastMessage = messages[messages.length - 1];
+        console.log(lastMessage)
+        // 创建系统提示词消息
+        const newSystemPrompt = {
+          role: "system", // 系统消息
+          content: "你是一个智能助手，当前环境是工具无法调用时才进行的临时回复，不会记录到历史回复中，调和尴尬，比如讲个笑话之类的。"
         };
-        /*
+        // 创建新的聊天消息，包含系统提示词和最后一条消息
+        const newChatMessages = [
+          newSystemPrompt, // 添加系统提示词
+          lastMessage
+        ];
+        console.log(newChatMessages)
+
         // 不需要调用工具时，重新调用AI输出内容，这里可以将工具的tool_choice设置为none
         const stream = await createChatCompletion({
-          messages,
+          messages: newChatMessages,
           temperature: 1.3,
           tool_choice: 'none',
           tools: []
@@ -234,7 +246,6 @@ export const sendMessageToAIStream = async function* (message, history = []) {
             content: chunk.choices[0]?.delta?.content || '' 
           };
         }
-        */
       }
       return;
     } else {
