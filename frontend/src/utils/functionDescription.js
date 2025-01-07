@@ -63,11 +63,6 @@ export const checkIfToolIsNeeded = (toolCalls, messages) => {
             console.log("天气工具被调用，但缺少位置信息。");
             return false;
           }
-          // 检查用户输入是否确实需要天气信息
-          if (!isWeatherRelatedQuery(messages)) {
-            console.log("天气工具被调用，但用户输入与天气无关。");
-            return false;
-          }
           break;
   
         case "query_personnel_archive":
