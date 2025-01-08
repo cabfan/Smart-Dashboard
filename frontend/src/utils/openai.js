@@ -10,7 +10,7 @@ import { mockWeatherAPI, mockQueryPersonnelArchive, getCurrentTime } from './too
 const transformHistoryMessages = (history) => {
   return history
     // 先过滤掉不需要的消息
-    .filter(msg => msg.status !== 'thinking' && msg.content !== '')
+    .filter(msg => msg.status !== 'thinking')
     // 然后进行转换
     .map(msg => {
       // 创建基本的消息对象
@@ -207,30 +207,7 @@ export const sendMessageToAIStream = async function* (history = []) {
     // 添加系统消息和用户最新消息
     messages.unshift({
       role: 'system',
-      content: `你是一个高效的助手，能够根据用户需求调用以下工具：
-
-get_weather：获取特定地点的当前天气。
-query_personnel_archive：查询人员档案信息。
-get_current_time：获取当前北京时间。
-重要规则：
-
-识别用户意图： 首先要识别用户意图。如果用户的需求包含多个不同的任务（例如天气查询和人员档案查询），tool_calls 应返回多个独立的工具调用。
-
-工具调用时机：
-
-仅在用户明确要求时调用工具。例如，用户输入：“请查询杭州的天气”，你可以调用 get_weather。
-如果用户仅提到相关关键词，但没有明确请求工具调用（如提到“天气”或“人员信息”），请先询问用户是否需要工具帮助。例如：
-用户输入：“杭州” → 你可以回复：“您是否需要获取杭州的天气信息？”
-用户输入：“人员信息” → 你可以回复：“您是否需要查询人员档案信息？”
-处理多个意图：
-
-如果用户同时提到多个任务（例如，查询天气和人员档案），请根据需求生成多个工具调用。例如：
-用户输入：“查询杭州的天气和张三的档案” → 生成两个工具调用，分别为 get_weather 和 query_personnel_archive。
-请确保每个工具调用都具备正确的 arguments 和 name。
-清晰的分隔和处理：
-
-如果用户的输入含有多个意图，请在生成 tool_calls 时分开每个工具调用，确保每个调用都有自己的明确任务和参数。
-如果用户的输入不明确，请主动询问用户的具体需求。`
+      content: `你是一个高效的助手`
     });
 
     console.log('[DEBUG] 1、发送的消息:', { 
@@ -316,34 +293,10 @@ get_current_time：获取当前北京时间。
         yield* handleToolCall(assistantMessage, messages);
       } else {
         // 以下是不需要调用工具时，重新调用AI输出内容
-
-        //获取messages最后一条
-        const lastMessage = messages[messages.length - 1];
-
-        // 创建系统提示词消息
-        const newSystemPrompt = {
-          role: "system", // 系统消息
-          content: "你是一个智能助手，告诉用户，在一次问答中，进行多次查询意图，目前还不至此。"
+        yield { 
+          status: 'responding',
+          content: '工具调用出现了问题，目前不支持一次查询多个意图，建议您分步查询。比如：“查询杭州的天气，返回结果后，再查询张三的档案。”' // 返回当前生成的内容
         };
-        // 创建新的聊天消息，包含系统提示词和最后一条消息
-        const newChatMessages = [
-          newSystemPrompt, // 添加系统提示词
-          lastMessage
-        ];
-
-        // 不需要调用工具时，重新调用AI输出内容，这里可以将工具的tool_choice设置为none
-        const stream = await createChatCompletion({
-          messages: newChatMessages,
-          temperature: 1.3,
-          tool_choice: 'none'
-        });
-        for await (const chunk of stream) {
-          console.log(chunk)
-          yield { 
-            status: 'responding',
-            content: chunk.choices[0]?.delta?.content || '' // 返回当前生成的内容
-          };
-        }
       }
       return;
     } else {

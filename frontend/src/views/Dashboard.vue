@@ -197,7 +197,6 @@ const sendMessage = async () => {
           }
           return msg
         })
-
       }
       
       // 使用 Vue 的响应式更新方式
