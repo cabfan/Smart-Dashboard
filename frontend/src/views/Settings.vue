@@ -85,7 +85,8 @@ const testSuccess = ref(false)
 const modelOptions = [
   { value: 'deepseek-chat', label: 'DeepSeek Chat' },
   { value: 'gpt-4o-mini-2024-07-18', label: 'GPT-4o-mini' },
-  { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' }
+  { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
+  { value: 'gpt-4o-2024-11-20', label: 'GPT-4o' }
 ]
 
 // 加载保存的设置

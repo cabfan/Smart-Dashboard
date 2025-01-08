@@ -43,6 +43,7 @@ import { Loading, Tools } from '@element-plus/icons-vue'
 import ChartCard from './ChartCard.vue'
 import StatisticCard from './StatisticCard.vue'
 import TimelineCard from './TimelineCard.vue'
+import WeatherCard from './WeatherCard.vue'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github.css'
 
@@ -140,7 +141,8 @@ const formatTime = (date) => {
 const componentsMap = {
   'StatisticCard': StatisticCard,
   'ChartCard': ChartCard,
-  'TimelineCard': TimelineCard
+  'TimelineCard': TimelineCard,
+  'WeatherCard': WeatherCard
 }
 
 const getComponent = (type) => {

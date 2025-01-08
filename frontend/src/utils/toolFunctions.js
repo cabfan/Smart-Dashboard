@@ -25,9 +25,6 @@ export const mockWeatherAPI = async (location) => {
       return `获取 ${cityName} 天气信息失败`;
     }
     return weatherData.now;
-    // 返回格式化后的天气信息
-    const weather = weatherData.now;
-    return `${cityName} 当前实时天气：${weather.temp}℃，${weather.text}，湿度 ${weather.humidity}%，风速 ${weather.windSpeed} 公里/小时`;
 
   } catch (error) {
     console.error('[ERROR] 获取天气信息失败:', error);

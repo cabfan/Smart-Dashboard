@@ -50,7 +50,7 @@ import { Promotion, Loading } from '@element-plus/icons-vue'
 const messages = ref([
   // 示例消息
   {
-    content: '您好Zapz，昨日工作表现良好，下面是你的销售数据。',
+    content: '您好Zapz，您的销售数据如下',
     isAI: true,
     time: new Date(),
     status: 'done'
@@ -65,7 +65,7 @@ const messages = ref([
       description: '昨日西风凋碧树，独上高楼，望尽天涯路。衣带渐宽终不悔，为伊消得人憔悴。众里寻他千百度，蓦然回首，那人却在，灯火阑珊处。',
       option: {
         title: {
-          text: '销售趋势',
+          text: '近期销售趋势',
           left: 'center'
         },
         tooltip: {
@@ -170,15 +170,40 @@ const sendMessage = async () => {
       status: 'thinking'
     };
     messages.value.push(aiMessage);
+    console.log('[DEBUG] 2 看一下:', messages.value)
     // 处理AI响应
     let isFirstChunk = true;
-    for await (const chunk of sendMessageToAIStream(userMessage, messages.value)) {
+    for await (const chunk of sendMessageToAIStream(messages.value)) {
       if (isFirstChunk) {
         aiMessage.status = chunk.status;
         isFirstChunk = false;
       }
+
+      if(chunk.status === 'tool_result') {
+        messages.value = messages.value.map((msg, index) => {
+          // 如果是最后一条消息，则更新其内容和状态
+          // 这里与AI交互是流式输出，所以动态的更新最后一条消息和状态，以便于UI的更新
+          if (index === messages.value.length - 1) {
+            return {
+              content: '',
+              status: 'done',
+              isAI: true,
+              time: new Date(),
+              componentType: chunk.componentType,
+              componentData: {
+                weatherData: JSON.parse(chunk.content)
+              }
+            }
+          }
+          return msg
+        })
+
+      }
+      
       // 使用 Vue 的响应式更新方式
       messages.value = messages.value.map((msg, index) => {
+        // 如果是最后一条消息，则更新其内容和状态
+        // 这里与AI交互是流式输出，所以动态的更新最后一条消息和状态，以便于UI的更新
         if (index === messages.value.length - 1) {
           return {
             ...msg,

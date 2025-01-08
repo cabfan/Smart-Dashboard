@@ -53,7 +53,15 @@ export const checkIfToolIsNeeded = (toolCalls, messages) => {
     // 遍历所有工具调用
     for (const toolCall of toolCalls) {
       const toolName = toolCall.function.name;
-      const toolArgs = JSON.parse(toolCall.function.arguments);
+      let toolArgs;
+
+      // 尝试解析工具参数
+      try {
+        toolArgs = JSON.parse(toolCall.function.arguments);
+      } catch (error) {
+        console.log("工具参数解析失败，反馈用户不支持多工具能力。");
+        return false;
+      }
   
       // 根据工具名称和参数判断是否需要调用
       switch (toolName) {
@@ -88,6 +96,7 @@ export const checkIfToolIsNeeded = (toolCalls, messages) => {
 
 // 检查用户输入是否与天气相关
 export function isWeatherRelatedQuery(messages) {
+    return true;
     const userMessage = messages[messages.length - 1]?.content || "";
     const weatherKeywords = ["天气", "温度", "天气预报", "下雨", "晴天"];
     return weatherKeywords.some(keyword => userMessage.toLowerCase().includes(keyword));
@@ -95,6 +104,7 @@ export function isWeatherRelatedQuery(messages) {
 
 // 检查用户输入是否与人员档案相关
 export function isPersonnelArchiveNeeded(messages) {
+    return true;
     const userMessage = messages[messages.length - 1]?.content || "";
     const keywords = ["人员档案", "档案", "人员", "查询"];
     return keywords.some(keyword => userMessage.toLowerCase().includes(keyword));
