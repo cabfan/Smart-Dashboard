@@ -18,6 +18,10 @@
           <el-icon><Monitor /></el-icon>
           <span>仪表盘</span>
         </el-menu-item>
+        <el-menu-item index="/chat">
+          <el-icon><ChatDotRound /></el-icon>
+          <span>ChatDB</span>
+        </el-menu-item>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>
           <span>系统设置</span>
@@ -62,7 +66,7 @@
 </template>
 
 <script setup>
-import { Bell, Monitor, Setting } from '@element-plus/icons-vue'
+import { Bell, Monitor, Setting, ChatDotRound } from '@element-plus/icons-vue'
 import { RouterView } from 'vue-router'
 
 </script>

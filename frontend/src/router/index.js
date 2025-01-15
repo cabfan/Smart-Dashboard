@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Dashboard from '../views/Dashboard.vue'
 import Settings from '../views/Settings.vue'
+import ChatDB from '../views/ChatDB.vue'
 
 const routes = [
   {
@@ -16,6 +17,11 @@ const routes = [
     path: '/settings',
     name: 'Settings',
     component: Settings
+  },
+  {
+    path: '/chat',
+    name: 'ChatDB',
+    component: ChatDB
   }
 ]
 

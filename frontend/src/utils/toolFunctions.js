@@ -64,7 +64,7 @@ export const mockQueryPersonnelArchive = async (sql) => {
 export const getCurrentTime = async () => {
   try {
     // 调用自己的后端接口
-    const response = await fetch('http://localhost:3000/api/current-time');
+    const response = await fetch('http://localhost:3001/api/current-time');
     const data = await response.json();
 
     if (!data.success) {

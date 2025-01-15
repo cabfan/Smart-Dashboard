@@ -295,7 +295,7 @@ export const sendMessageToAIStream = async function* (history = []) {
         // 以下是不需要调用工具时，重新调用AI输出内容
         yield { 
           status: 'responding',
-          content: '工具调用出现了问题，目前不支持一次查询多个意图，建议您分步查询。比如：“查询杭州的天气，返回结果后，再查询张三的档案。”' // 返回当前生成的内容
+          content: '工具调用出现了问题，目前不支持一次查询多个意图，建议您分步查询。比如："查询杭州的天气，返回结果后，再查询张三的档案。"' // 返回当前生成的内容
         };
       }
       return;
