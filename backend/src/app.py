@@ -36,6 +36,8 @@ client = AsyncOpenAI(
 def init_db():
     conn = sqlite3.connect('database.sqlite')
     c = conn.cursor()
+    
+    # 创建表
     c.execute('''
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,6 +47,22 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    
+    # 添加一些测试数据
+    c.execute('DELETE FROM tasks')  # 清空现有数据
+    test_data = [
+        ('完成项目报告', '编写第一季度项目进展报告', 'pending', '2024-03-14 10:00:00'),
+        ('客户会议', '与客户讨论新需求', 'completed', '2024-03-13 14:30:00'),
+        ('代码审查', '审查团队提交的新功能代码', 'pending', '2024-03-14 09:00:00'),
+        ('系统测试', '执行系统集成测试', 'pending', '2024-03-14 11:30:00'),
+        ('文档更新', '更新API文档', 'completed', '2024-03-12 16:00:00'),
+    ]
+    
+    c.executemany('''
+        INSERT INTO tasks (title, description, status, created_at)
+        VALUES (?, ?, ?, ?)
+    ''', test_data)
+    
     conn.commit()
     conn.close()
 
@@ -63,9 +81,14 @@ async def websocket_endpoint(websocket: WebSocket):
             chat_result = await chat_manager.process_message(
                 message_data.get("messages", [{}])[-1].get("content", "")
             )
+            print("Chat Manager Result:", chat_result)
             
             # 如果有明确的意图匹配且处理成功
             if chat_result["success"] and not chat_result.get("should_fallback"):
+                print("Sending JSON response:", {
+                    "type": "stream",
+                    "content": json.dumps(chat_result["data"], ensure_ascii=False)
+                })
                 await websocket.send_json({
                     "type": "stream",
                     "content": json.dumps(chat_result["data"], ensure_ascii=False)

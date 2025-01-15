@@ -14,7 +14,7 @@ dist-ssr
 *.pyc
 # 环境变量
 .env
-
+*.bin
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

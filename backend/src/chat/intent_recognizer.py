@@ -119,4 +119,47 @@ class TimeIntentRecognizer(BaseIntentRecognizer):
             'confidence': 0.0,
             'intent_type': None,
             'matching_method': None
+        }
+
+class DatabaseQueryRecognizer(BaseIntentRecognizer):
+    def __init__(self):
+        super().__init__()
+        self.keywords = {
+            'query_words': {'查询', '统计', '查找', '搜索', '显示', '列出', '有多少', '几个'},
+            'db_words': {'任务', '数据', '记录', 'task', 'tasks'},
+            'filter_words': {'哪些', '什么', '多少', '几个', '所有', '条'}
+        }
+        self.quick_patterns = [
+            r'.*查询.*任务.*',
+            r'.*显示.*数据.*',
+            r'.*统计.*记录.*',
+            r'.*tasks.*',
+            r'.*有多少.*任务.*',
+            r'.*统计.*任务.*'
+        ]
+
+    def _quick_match(self, text: str) -> bool:
+        has_query = any(word in text for word in self.keywords['query_words'])
+        has_db = any(word in text for word in self.keywords['db_words'])
+        has_filter = any(word in text for word in self.keywords['filter_words'])
+        
+        if (has_query and has_db) or (has_filter and has_db):
+            return True
+            
+        return any(re.match(pattern, text) for pattern in self.quick_patterns)
+
+    def analyze_intent(self, text: str) -> Dict:
+        if self._quick_match(text):
+            return {
+                'is_match': True,
+                'confidence': 0.9,
+                'intent_type': 'database_query',
+                'matching_method': 'quick_match',
+                'params': {'question': text}
+            }
+        return {
+            'is_match': False,
+            'confidence': 0.0,
+            'intent_type': None,
+            'matching_method': None
         } 

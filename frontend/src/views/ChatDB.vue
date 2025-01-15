@@ -55,15 +55,35 @@ const connectWebSocket = () => {
     
     if (data.type === 'stream') {
       let content = data.content;
+      console.log('Received stream data:', data);
       try {
         // 尝试解析 JSON 内容
         const jsonData = JSON.parse(data.content);
+        console.log('Parsed JSON data:', jsonData);
         if (jsonData.city) {
           // 格式化天气信息
           content = `${jsonData.message}\n温度：${jsonData.temperature}\n天气：${jsonData.weather}\n湿度：${jsonData.humidity}\n风力：${jsonData.wind}`;
         } else if (jsonData.timestamp) {
           // 格式化时间信息
           content = `当前时间是：${jsonData.formatted}`;
+        } else if (jsonData.sql) {
+          // 格式化数据库查询结果
+          content = `${jsonData.message}\n\n执行的SQL：\n${jsonData.sql}\n\n查询结果：\n`;
+          
+          // 如果结果是数组，格式化显示
+          if (Array.isArray(jsonData.results)) {
+            if (jsonData.results.length === 1 && typeof jsonData.results[0] !== 'object') {
+              // 如果是单个值（如 COUNT 查询）
+              content += jsonData.results[0];
+            } else {
+              // 如果是多行结果
+              content += '\n' + jsonData.results.map(row => 
+                JSON.stringify(row, null, 2)
+              ).join('\n');
+            }
+          } else {
+            content += '\n' + JSON.stringify(jsonData.results, null, 2);
+          }
         }
       } catch (e) {
         // 如果不是 JSON，直接使用原内容
