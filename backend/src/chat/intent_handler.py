@@ -3,35 +3,86 @@ import pytz
 import json
 from typing import Dict, Any
 import os
+import aiohttp
 from .vanna_service import VannaService
 
 class IntentHandler:
     def __init__(self):
+        self.weather_api_key = "46c9ded06bd84ce5b833058495a1fd17"  # 和前端使用相同的 key
         self.vanna_service = VannaService(config={
             'api_key': os.getenv('OPENAI_API_KEY'),
-            'model': os.getenv('OPENAI_MODEL', 'gpt-4')
+            'model': os.getenv('OPENAI_MODEL', 'deepseek-chat'),
+            'base_url': os.getenv('OPENAI_BASE_URL'),
+            'temperature': 0.7,
+            'max_tokens': 2000,
+            'verbose': True
         })
 
     async def handle_weather_intent(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """处理天气意图"""
         try:
-            city = params.get('params', {}).get('city', '北京')
-            # 这里应该调用真实的天气 API
-            return {
-                "success": True,
-                "data": {
-                    "city": city,
-                    "temperature": "25°C",
-                    "weather": "晴",
-                    "humidity": "65%",
-                    "wind": "东北风 3级",
-                    "message": f"为您查询到{city}的天气信息"
+            city = params.get('params', {}).get('city', '')
+            if not city:
+                return {
+                    "success": False,
+                    "error": "未指定城市名"
                 }
-            }
+            
+            async with aiohttp.ClientSession() as session:
+                # 1. 先查询城市 ID
+                lookup_url = f"https://geoapi.qweather.com/v2/city/lookup"
+                params = {
+                    "location": city,
+                    "range": "cn",
+                    "key": self.weather_api_key
+                }
+                
+                async with session.get(lookup_url, params=params) as response:
+                    lookup_data = await response.json()
+                    
+                    if lookup_data.get("code") != "200" or not lookup_data.get("location"):
+                        return {
+                            "success": False,
+                            "error": f"无法找到 {city} 的位置信息"
+                        }
+                    
+                    # 获取城市 ID 和标准城市名
+                    city_id = lookup_data["location"][0]["id"]
+                    city_name = lookup_data["location"][0]["name"]
+                    
+                    # 2. 查询实时天气
+                    weather_url = f"https://devapi.qweather.com/v7/weather/now"
+                    params = {
+                        "location": city_id,
+                        "key": self.weather_api_key
+                    }
+                    
+                    async with session.get(weather_url, params=params) as response:
+                        weather_data = await response.json()
+                        
+                        if weather_data.get("code") != "200":
+                            return {
+                                "success": False,
+                                "error": f"获取 {city_name} 天气信息失败"
+                            }
+                        
+                        weather = weather_data["now"]
+                        return {
+                            "success": True,
+                            "data": {
+                                "city": city_name,
+                                "temperature": f"{weather['temp']}°C",
+                                "weather": weather['text'],
+                                "humidity": f"{weather['humidity']}%",
+                                "wind": f"{weather['windDir']} {weather['windScale']}级",
+                                "message": f"为您查询到{city_name}的天气信息"
+                            }
+                        }
+
         except Exception as e:
             return {
                 "success": False,
-                "error": str(e)
+                "error": f"获取天气信息失败: {str(e)}"
             }
 
     async def handle_time_intent(self, params: Dict[str, Any]) -> Dict[str, Any]:

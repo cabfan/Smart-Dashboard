@@ -4,13 +4,15 @@ import re
 
 class BaseIntentRecognizer:
     def __init__(self):
-        self.quick_patterns = []
-        self.keywords = {}
-        self.train_examples = []
+        self.command_prefix = '@'
+        self.commands = set()  # 子类将定义支持的命令
         
     def _quick_match(self, text: str) -> bool:
-        """快速模式匹配"""
-        return False
+        """检查是否是命令模式"""
+        if not text.startswith(self.command_prefix):
+            return False
+        command = text[1:].strip().split()[0]  # 获取@后的第一个词
+        return command in self.commands
         
     def _vector_similarity(self, text: str) -> float:
         """向量相似度匹配"""
@@ -28,49 +30,53 @@ class BaseIntentRecognizer:
 class WeatherIntentRecognizer(BaseIntentRecognizer):
     def __init__(self):
         super().__init__()
-        self.city_pattern = r'([一-龥]+?(?:省|市|区|县|镇))'  # 匹配中文城市名
-        self.keywords = {
-            'weather_words': {'天气', '气温', '温度', '下雨', '下雪', '晴天', '阴天', '湿度', '查询'},
-            'time_words': {'今天', '明天', '后天', '早上', '中午', '下午', '晚上'},
-            'question_words': {'怎么样', '如何', '会不会', '是不是', '查询', '告诉我'}
-        }
-        self.quick_patterns = [
-            r'.*天气.*怎么样',
-            r'.*会不会下雨.*',
-            r'.*温度.*多少',
-            r'.*查询.*天气.*',
-            r'.*天气.*查询.*',
-            r'.*天气.*如何.*'
-        ]
-
-    def _quick_match(self, text: str) -> bool:
-        # 检查是否包含城市名
-        city = self._extract_city(text)
-        if not city:
-            return False
-            
-        # 检查是否是天气查询
-        has_weather = any(word in text for word in self.keywords['weather_words'])
-        if has_weather:
-            return True
-            
-        return any(re.match(pattern, text) for pattern in self.quick_patterns)
+        self.commands = {'天气', '查天气', '查询天气'}
+        self.city_pattern = r'([一-龥]+?(?:省|市|区|县|镇))'
 
     def _extract_city(self, text: str) -> str:
-        # 尝试从文本中提取城市名
+        """从文本中提取城市名"""
         city_match = re.search(self.city_pattern, text)
         if city_match:
             return city_match.group(1)
         # 如果找不到城市名，从文本中查找已知城市名
-        known_cities = {'北京', '上海', '广州', '深圳', '杭州', '西安'}  # 可以扩充这个列表
+        known_cities = {'北京', '上海', '广州', '深圳', '杭州', '西安'}
         for city in known_cities:
             if city in text:
                 return city
-        return '北京'  # 默认城市
+        return ''
 
     def analyze_intent(self, text: str) -> Dict:
-        if self._quick_match(text):
-            city = self._extract_city(text)
+        # 首先检查是否是命令格式
+        if not text.startswith(self.command_prefix):
+            return {
+                'is_match': False,
+                'confidence': 0.0,
+                'intent_type': None,
+                'matching_method': None
+            }
+
+        # 分割命令和参数
+        parts = text[1:].strip().split(maxsplit=1)
+        if len(parts) < 2:  # 如果没有参数部分
+            return {
+                'is_match': False,
+                'confidence': 0.0,
+                'intent_type': None,
+                'matching_method': None
+            }
+
+        command, params = parts
+        if command in self.commands:
+            # 提取城市名
+            city = self._extract_city(params)
+            if not city:  # 如果没有找到城市名
+                return {
+                    'is_match': False,
+                    'confidence': 0.0,
+                    'intent_type': None,
+                    'matching_method': None
+                }
+
             return {
                 'is_match': True,
                 'confidence': 0.9,
@@ -88,32 +94,19 @@ class WeatherIntentRecognizer(BaseIntentRecognizer):
 class TimeIntentRecognizer(BaseIntentRecognizer):
     def __init__(self):
         super().__init__()
-        self.keywords = {
-            'time_words': {'时间', '几点', '现在', '当前'},
-            'question_words': {'是', '多少', '什么'}
-        }
-        self.quick_patterns = [
-            r'.*现在.*几点.*',
-            r'.*当前时间.*',
-            r'.*时间.*是.*',
-        ]
-
-    def _quick_match(self, text: str) -> bool:
-        has_time = any(word in text for word in self.keywords['time_words'])
-        has_question = any(word in text for word in self.keywords['question_words'])
-        if has_time and has_question:
-            return True
-            
-        return any(re.match(pattern, text) for pattern in self.quick_patterns)
+        self.commands = {'时间', '查时间', '当前时间', '现在时间'}
 
     def analyze_intent(self, text: str) -> Dict:
-        if self._quick_match(text):
-            return {
-                'is_match': True,
-                'confidence': 0.9,
-                'intent_type': 'time',
-                'matching_method': 'quick_match'
-            }
+        # 检查是否是完整的时间查询命令
+        if text.startswith(self.command_prefix):
+            command = text[1:].strip()
+            if command in self.commands:
+                return {
+                    'is_match': True,
+                    'confidence': 0.9,
+                    'intent_type': 'time',
+                    'matching_method': 'quick_match'
+                }
         return {
             'is_match': False,
             'confidence': 0.0,
@@ -124,38 +117,33 @@ class TimeIntentRecognizer(BaseIntentRecognizer):
 class DatabaseQueryRecognizer(BaseIntentRecognizer):
     def __init__(self):
         super().__init__()
-        self.keywords = {
-            'query_words': {'查询', '统计', '查找', '搜索', '显示', '列出', '有多少', '几个'},
-            'db_words': {'任务', '数据', '记录', 'task', 'tasks'},
-            'filter_words': {'哪些', '什么', '多少', '几个', '所有', '条'}
+        self.commands = {
+            '查询', '统计', '查找', '搜索',
+            '查询任务', '统计任务', '查找任务', '搜索任务',
+            '任务列表', '任务统计'
         }
-        self.quick_patterns = [
-            r'.*查询.*任务.*',
-            r'.*显示.*数据.*',
-            r'.*统计.*记录.*',
-            r'.*tasks.*',
-            r'.*有多少.*任务.*',
-            r'.*统计.*任务.*'
-        ]
-
-    def _quick_match(self, text: str) -> bool:
-        has_query = any(word in text for word in self.keywords['query_words'])
-        has_db = any(word in text for word in self.keywords['db_words'])
-        has_filter = any(word in text for word in self.keywords['filter_words'])
-        
-        if (has_query and has_db) or (has_filter and has_db):
-            return True
-            
-        return any(re.match(pattern, text) for pattern in self.quick_patterns)
 
     def analyze_intent(self, text: str) -> Dict:
-        if self._quick_match(text):
+        # 检查是否是完整的数据库查询命令
+        if not text.startswith(self.command_prefix):
+            return {
+                'is_match': False,
+                'confidence': 0.0,
+                'intent_type': None,
+                'matching_method': None
+            }
+
+        parts = text[1:].strip().split(maxsplit=1)
+        command = parts[0]
+        params = parts[1] if len(parts) > 1 else ''
+
+        if command in self.commands:
             return {
                 'is_match': True,
                 'confidence': 0.9,
                 'intent_type': 'database_query',
                 'matching_method': 'quick_match',
-                'params': {'question': text}
+                'params': {'question': params or command}  # 如果没有参数，使用命令本身
             }
         return {
             'is_match': False,

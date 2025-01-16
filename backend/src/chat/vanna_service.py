@@ -6,9 +6,21 @@ from typing import Dict, Any
 
 class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
     def __init__(self, config=None):
+        print("Initializing VannaService with config:", config)
+        if not config or 'api_key' not in config:
+            raise ValueError("API key is required for VannaService")
+        
+        # 确保配置完整
+        required_config = ['api_key', 'model', 'base_url']
+        missing_config = [key for key in required_config if key not in config]
+        print("Checking required config. Missing:", missing_config if missing_config else "None")
+        if missing_config:
+            raise ValueError(f"Missing required configuration: {', '.join(missing_config)}")
+        
         ChromaDB_VectorStore.__init__(self, config=config)
         OpenAI_Chat.__init__(self, config=config)
         self.db_path = 'database.sqlite'
+        
         self._init_vanna()
     
     def _init_vanna(self):
@@ -91,13 +103,16 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
                     explanation = f"查询到 {len(results)} 条记录"
             print("Generated Explanation:", explanation)
             
-            # 格式化结果
+            # 格式化结果为标准格式
             formatted_results = []
-            for row in results:
-                if len(columns) == 1:
-                    formatted_results.append(row[0])
-                else:
+            if len(columns) == 1 and len(results) == 1:
+                # 单值结果
+                formatted_results = results[0][0]
+            else:
+                # 表格结果
+                for row in results:
                     formatted_results.append(dict(zip(columns, row)))
+            
             print("Formatted Results:", formatted_results)
             
             response = {
@@ -105,7 +120,9 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
                 "data": {
                     "message": explanation,
                     "sql": sql,
-                    "results": formatted_results
+                    "results": formatted_results,
+                    "type": "single" if (len(columns) == 1 and len(results) == 1) else "table",
+                    "columns": columns
                 }
             }
             print("Final Response:", response)

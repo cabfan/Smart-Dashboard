@@ -13,6 +13,13 @@ from typing import List, Dict
 # 加载环境变量
 load_dotenv()
 
+# 检查必要的环境变量
+def check_env_variables():
+    required_vars = ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL']
+    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    if missing_vars:
+        raise EnvironmentError(f"Missing required environment variables: {', '.join(missing_vars)}")
+
 app = FastAPI()
 chat_manager = ChatManager()
 
@@ -29,7 +36,9 @@ app.add_middleware(
 client = AsyncOpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
     base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-    http_client=None  # 使用默认的 HTTP 客户端
+    default_headers={
+        "Content-Type": "application/json",
+    }
 )
 
 # 数据库初始化
@@ -85,13 +94,25 @@ async def websocket_endpoint(websocket: WebSocket):
             
             # 如果有明确的意图匹配且处理成功
             if chat_result["success"] and not chat_result.get("should_fallback"):
-                print("Sending JSON response:", {
-                    "type": "stream",
-                    "content": json.dumps(chat_result["data"], ensure_ascii=False)
-                })
+                print("Original chat result:", chat_result)
+                # 根据不同的意图类型格式化内容
+                if "sql" in chat_result["data"]:
+                    # 数据库查询结果
+                    formatted_content = {
+                        "message": chat_result["data"]["message"],
+                        "sql": chat_result["data"]["sql"],
+                        "results": chat_result["data"]["results"],
+                        "type": chat_result["data"]["type"],
+                        "columns": chat_result["data"].get("columns", [])
+                    }
+                else:
+                    # 其他类型的响应（天气、时间等）
+                    formatted_content = chat_result["data"]
+                
+                print("Formatted content:", formatted_content)
                 await websocket.send_json({
                     "type": "stream",
-                    "content": json.dumps(chat_result["data"], ensure_ascii=False)
+                    "content": json.dumps(formatted_content, ensure_ascii=False)
                 })
                 continue
             
@@ -191,9 +212,10 @@ async def health_check():
             "message": str(e)
         }
 
-# 启动时初始化数据库
+# 启动时初始化
 @app.on_event("startup")
 async def startup_event():
+    check_env_variables()
     init_db()
 
 if __name__ == "__main__":
