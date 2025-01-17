@@ -6,7 +6,7 @@ import ChatDB from '../views/ChatDB.vue'
 const routes = [
   {
     path: '/',
-    redirect: '/dashboard'
+    redirect: '/chat'
   },
   {
     path: '/dashboard',

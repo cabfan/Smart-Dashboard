@@ -67,14 +67,40 @@
                 </el-table>
               </div>
               
-              <!-- SQL 语句展示 -->
-              <div class="sql-preview">
-                <div class="sql-header">
-                  <el-icon><Connection /></el-icon>
-                  执行的 SQL
-                </div>
-                <div v-html="renderMarkdown('```sql\n' + getQuerySQL(message.content) + '\n```')" />
-              </div>
+              <!-- 使用Collapse组件包装JSON预览和SQL预览 -->
+              <el-collapse v-model="activeCollapses" class="result-collapse">
+                <!-- JSON预览面板 -->
+                <el-collapse-item name="json">
+                  <template #title>
+                    <div class="collapse-header">
+                      <el-icon><Document /></el-icon>
+                      查询结果
+                      <el-button 
+                        type="primary" 
+                        link 
+                        size="small" 
+                        @click.stop="copyQueryResult(message.content)"
+                        class="copy-button"
+                      >
+                        <el-icon><CopyDocument /></el-icon>
+                        复制JSON
+                      </el-button>
+                    </div>
+                  </template>
+                  <pre class="json-content">{{ formatJSON(message.content) }}</pre>
+                </el-collapse-item>
+
+                <!-- SQL预览面板 -->
+                <el-collapse-item name="sql">
+                  <template #title>
+                    <div class="collapse-header">
+                      <el-icon><Connection /></el-icon>
+                      执行的 SQL
+                    </div>
+                  </template>
+                  <div v-html="renderMarkdown('```sql\n' + getQuerySQL(message.content) + '\n```')" />
+                </el-collapse-item>
+              </el-collapse>
             </template>
             <div v-else v-html="renderMarkdown(message.content)" />
           </div>
@@ -266,9 +292,9 @@
         v-model="inputMessage"
         type="textarea"
         :rows="3"
-        placeholder="输入 @ 查看可用命令..."
+        placeholder="输入 @ 查看可用命令... (Shift + Enter 发送)"
         resize="none"
-        @keydown.enter.prevent="sendMessage"
+        @keydown.enter="handleEnterKey"
         @input="handleInput"
         ref="inputRef"
       />
@@ -303,7 +329,9 @@ import {
   PieChart,
   Position,
   User,
-  Close
+  Close,
+  Document,
+  CopyDocument
 } from '@element-plus/icons-vue'
 
 // 初始化 markdown 解析器
@@ -851,6 +879,38 @@ onUnmounted(() => {
     ws.value.close()
   }
 })
+
+const formatJSON = (content) => {
+  try {
+    const data = JSON.parse(content)
+    return JSON.stringify(data, null, 2)
+  } catch {
+    return ''
+  }
+}
+
+const copyQueryResult = async (content) => {
+  try {
+    await navigator.clipboard.writeText(content)
+    ElMessage.success('复制成功')
+  } catch (error) {
+    console.error('复制失败:', error)
+    ElMessage.error('复制失败')
+  }
+}
+
+// 添加折叠面板的激活状态
+const activeCollapses = ref([]) // 默认折叠所有面板
+
+// 处理回车键
+const handleEnterKey = (e) => {
+  if (e.shiftKey) {
+    // Shift + Enter 发送消息
+    e.preventDefault() // 阻止默认换行
+    sendMessage()
+  }
+  // 普通 Enter 键不做处理，将自动换行
+}
 </script>
 
 <style scoped>
@@ -1301,5 +1361,129 @@ onUnmounted(() => {
 
 .close-hints:hover {
   color: var(--el-text-color-primary);
+}
+
+.json-preview {
+  margin: 16px 0;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 8px;
+}
+
+.json-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.json-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
+}
+
+.copy-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.json-content {
+  background: #f8f9fa;
+  padding: 12px;
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-x: auto;
+  margin: 0;
+}
+
+.json-content::-webkit-scrollbar {
+  height: 8px;
+}
+
+.json-content::-webkit-scrollbar-thumb {
+  background: #ddd;
+  border-radius: 4px;
+}
+
+.json-content::-webkit-scrollbar-track {
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+
+/* 添加新的折叠面板样式 */
+.result-collapse {
+  margin: 16px 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+:deep(.el-collapse-item__header) {
+  background: rgba(0, 0, 0, 0.02);
+  padding: 12px 16px;
+  font-size: 14px;
+}
+
+:deep(.el-collapse-item__content) {
+  padding: 16px;
+  background: #fff;
+}
+
+.collapse-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.copy-button {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 保持JSON内容的样式 */
+.json-content {
+  background: #f8f9fa;
+  padding: 12px;
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-x: auto;
+  margin: 0;
+}
+
+.json-content::-webkit-scrollbar {
+  height: 8px;
+}
+
+.json-content::-webkit-scrollbar-thumb {
+  background: #ddd;
+  border-radius: 4px;
+}
+
+.json-content::-webkit-scrollbar-track {
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+
+/* 优化折叠面板的过渡动画 */
+:deep(.el-collapse-item__wrap) {
+  transition: all 0.3s ease-in-out;
+}
+
+:deep(.el-collapse-item__header) {
+  transition: all 0.3s ease-in-out;
+}
+
+:deep(.el-collapse-item__header:hover) {
+  background: rgba(0, 0, 0, 0.04);
 }
 </style> 
