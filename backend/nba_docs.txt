@@ -1,0 +1,44 @@
+
+        NBA 投篮数据表 (nba_shots)，该表记录了NBA比赛中球员的投篮数据，包括投篮位置、投篮类型、投篮结果以及比赛时间等信息，适用于篮球数据分析和研究。包含以下字段：
+        SEASON_1 & SEASON_2: 赛季指示变量，用于区分不同赛季。
+        TEAM_ID: NBA API 中特定球队的唯一标识符。
+        TEAM_NAME: NBA API 中特定球队的名称。
+        PLAYER_ID: NBA API 中特定球员的唯一标识符。
+        PLAYER_NAME: NBA API 中特定球员的名称。
+        GAME_DATE: 比赛日期（格式为月-日-年，即 M-D-Y）。
+        GAME_ID: NBA API 中特定比赛的唯一标识符。
+        EVENT_TYPE: 表示投篮结果的字符变量（命中投篮 // 未命中投篮）。
+        SHOT_MADE: 表示投篮结果的整数变量（1 表示命中，0 表示未命中）。
+        ACTION_TYPE: 投篮类型的描述（例如上篮、扣篮、跳投等）。
+        SHOT_TYPE: 投篮类型（2分球或3分球）。
+        BASIC_ZONE: 投篮发生的球场区域名称。包括：禁区（Restricted Area）、油漆区非禁区（In the Paint (non-RA)）、中距离（Midrange）、左侧底角三分（Left Corner 3）、右侧底角三分（Right Corner 3）、弧顶三分（Above the Break）、后场（Backcourt）。
+        ZONE_NAME: 投篮发生的球场侧边区域名称。包括：左侧（left）、左侧中心（left side center）、中心（center）、右侧中心（right side center）、右侧（right）。
+        ZONE_ABB: 球场侧边区域的缩写。包括：(L) 左侧，(LC) 左侧中心，(C) 中心，(RC) 右侧中心，(R) 右侧。
+        ZONE_RANGE: 投篮距离的区域范围。包括：小于8英尺（Less than 8 ft.）、8-16英尺（8-16 ft.）、16-24英尺（16-24 ft.）、24英尺以上（24+ ft.）。
+        LOC_X: 投篮在球场平面坐标系中的X坐标（范围为0到50）。
+        LOC_Y: 投篮在球场平面坐标系中的Y坐标（范围为0到50）。
+        SHOT_DISTANCE: 投篮距离篮筐中心的距离，单位为英尺。
+        QUARTER: 比赛的第几节。
+        MINS_LEFT: 当前节剩余的分钟数。
+        SECS_LEFT: 当前分钟剩余的秒数。
+        
+        示例查询：
+        1. SELECT player_name, COUNT(*) as shots FROM nba_shots GROUP BY player_name ORDER BY shots DESC LIMIT 5;
+        2. SELECT TEAM_NAME, 
+                  COUNT(*) as attempts,
+                  SUM(SHOT_MADE) as made,
+                  ROUND(AVG(SHOT_MADE) * 100, 2) as fg_percentage 
+            FROM nba_shots 
+            GROUP BY TEAM_NAME 
+            ORDER BY fg_percentage DESC;
+        3. SELECT action_type, COUNT(*) as count FROM nba_shots WHERE shot_made = 1 GROUP BY action_type ORDER BY count DESC LIMIT 10;
+        4. SELECT PLAYER_NAME,
+                  COUNT(*) as attempts,
+                  SUM(SHOT_MADE) as made,
+                  ROUND(AVG(SHOT_MADE) * 100, 2) as fg_percentage
+            FROM nba_shots
+            GROUP BY PLAYER_NAME
+            HAVING attempts >= 100
+            ORDER BY fg_percentage DESC
+            LIMIT 10;
+        

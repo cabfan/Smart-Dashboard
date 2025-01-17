@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 *.pyc
+*.sqlite
+*.db
+*.sqlite3
+*.db3
+
 # 环境变量
 .env
 *.bin

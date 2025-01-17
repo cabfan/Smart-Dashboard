@@ -5,12 +5,32 @@
            :class="['message', message.isAI ? 'ai' : 'user']">
         <div class="message-content" :class="{ 'markdown-body': message.isAI }">
           <div v-if="message.isAI" class="markdown-body">
+            <!-- 加载状态 -->
+            <div v-if="message.loading" class="loading-message">
+              <el-skeleton :rows="3" animated />
+              <div class="loading-text">
+                <el-icon class="rotating"><Loading /></el-icon>
+                正在查询数据，请稍候...
+                <span class="timer">{{ formatExecutionTime(message.startTime) }}</span>
+              </div>
+            </div>
+            
             <!-- 调试信息 -->
             <pre v-if="false">{{ message.content }}</pre>
             
             <!-- 解析 JSON 字符串，检查是否包含数据库查询结果 -->
-            <template v-if="isDbQueryResult(message.content)">
+            <template v-else-if="isQueryCommand(message.content)">
+              <!-- 执行时间 -->
+              <div class="execution-time">
+                执行耗时: {{ calculateExecutionTime(message.startTime, message.endTime) }}
+              </div>
               <div v-html="renderMarkdown(getMessageHeader(message.content))" />
+              
+              <!-- 数据可视化 -->
+              <DataChart 
+                v-if="shouldShowChart(message.content)"
+                :data="parseMessageData(message.content)" 
+              />
               
               <!-- 单值显示 -->
               <div v-if="isSingleValue(message.content)" class="single-value">
@@ -31,13 +51,18 @@
                   style="width: 100%"
                   :border="true"
                   stripe
+                  show-summary
+                  :summary-method="getSummary"
                 >
                   <el-table-column 
                     v-for="col in getTableColumns(message.content)"
                     :key="col"
                     :prop="col"
                     :label="formatColumnLabel(col)"
+                    sortable
                     show-overflow-tooltip
+                    :sort-method="(a, b) => sortTableColumn(a[col], b[col])"
+                    :formatter="(row, column) => formatTableCell(row[column.property], column.property)"
                   />
                 </el-table>
               </div>
@@ -61,14 +86,46 @@
       </div>
     </div>
     
+    <!-- 快捷工具栏 -->
     <div class="quick-tools">
       <el-button-group class="tool-group">
+        <!-- NBA 数据分析 -->
+        <el-tooltip 
+          content="查看各队投篮数据" 
+          placement="top"
+          :show-after="500"
+        >
+          <el-button @click="quickCommand('@查询统计 各队投篮命中率')" :icon="PieChart">
+            球队命中率
+          </el-button>
+        </el-tooltip>
+        
+        <el-tooltip 
+          content="查看不同区域投篮数据" 
+          placement="top"
+          :show-after="500"
+        >
+          <el-button @click="quickCommand('@查询统计 分析不同区域的投篮效率')" :icon="Position">
+            区域分析
+          </el-button>
+        </el-tooltip>
+        
+        <el-tooltip 
+          content="查看球员投篮排名" 
+          placement="top"
+          :show-after="500"
+        >
+          <el-button @click="quickCommand('@查询统计 球员投篮排名')" :icon="User">
+            球员排名
+          </el-button>
+        </el-tooltip>
+        
         <el-tooltip 
           content="查询天气" 
           placement="top"
           :show-after="500"
         >
-          <el-button @click="quickCommand('天气 西安')" :icon="Sunny">
+          <el-button @click="quickCommand('@查天气 西安')" :icon="Sunny">
             天气查询
           </el-button>
         </el-tooltip>
@@ -78,77 +135,150 @@
           placement="top"
           :show-after="500"
         >
-          <el-button @click="quickCommand('时间')" :icon="Timer">
+          <el-button @click="quickCommand('@查询时间')" :icon="Timer">
             时间
           </el-button>
         </el-tooltip>
         
         <el-tooltip 
-          content="查看所有任务" 
+          content="查看待办任务列表" 
           placement="top"
           :show-after="500"
         >
-          <el-button @click="quickCommand('任务列表')" :icon="List">
-            任务列表
-          </el-button>
-        </el-tooltip>
-        
-        <el-tooltip 
-          content="统计任务状态" 
-          placement="top"
-          :show-after="500"
-        >
-          <el-button @click="quickCommand('统计任务')" :icon="PieChart">
-            任务统计
+          <el-button @click="quickCommand('@查询统计 查看所有待办任务')" :icon="List">
+            待办任务
           </el-button>
         </el-tooltip>
       </el-button-group>
     </div>
-
+    
+    <!-- 输入区域 -->
     <div class="chat-input-container">
+      <!-- 命令提示 -->
       <div v-if="showCommandHints" class="command-hints">
+        <!-- 关闭按钮 -->
+        <el-button
+          class="close-hints"
+          type="text"
+          :icon="Close"
+          @click="showCommandHints = false"
+        />
         <div class="hints-header">
           <el-icon><Operation /></el-icon>
-          可用命令：
+          可用命令
         </div>
         <div class="hints-content">
-          <div 
-            v-for="(commands, category) in filteredCommands" 
-            :key="category" 
-            class="hint-category"
-          >
-            <div class="category-title">{{ category }}：</div>
-            <el-tag 
-              v-for="cmd in commands" 
-              :key="cmd"
-              class="command-tag"
-              @click="insertCommand(cmd)"
-            >
-              @{{ cmd }}
-            </el-tag>
+          <!-- 基础命令 -->
+          <div class="hint-category">
+            <span class="category-title">基础命令</span>
+            <div class="command-group">
+              <el-tag 
+                v-for="cmd in baseCommands" 
+                :key="cmd"
+                class="command-tag command-base"
+                @click="applyCommand(cmd)"
+              >
+                {{ cmd }}
+              </el-tag>
+            </div>
+          </div>
+          
+          <!-- 分类示例命令 -->
+          <div class="categories-row">
+            <div class="category-container" v-if="commandCategories['基础查询']">
+              <span class="category-title">基础查询</span>
+              <div class="command-group">
+                <el-tag 
+                  v-for="cmd in commandCategories['基础查询']"
+                  :key="cmd"
+                  class="command-tag command-example"
+                  @click="applyCommand(cmd)"
+                >
+                  {{ cmd }}
+                </el-tag>
+              </div>
+            </div>
+            <div class="category-container" v-if="commandCategories['球队分析']">
+              <span class="category-title">球队分析</span>
+              <div class="command-group">
+                <el-tag 
+                  v-for="cmd in commandCategories['球队分析']"
+                  :key="cmd"
+                  class="command-tag command-example"
+                  @click="applyCommand(cmd)"
+                >
+                  {{ cmd }}
+                </el-tag>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 第二行：球员分析和区域分析 -->
+          <div class="categories-row">
+            <div class="category-container" v-if="commandCategories['球员分析']">
+              <span class="category-title">球员分析</span>
+              <div class="command-group">
+                <el-tag 
+                  v-for="cmd in commandCategories['球员分析']"
+                  :key="cmd"
+                  class="command-tag command-example"
+                  @click="applyCommand(cmd)"
+                >
+                  {{ cmd }}
+                </el-tag>
+              </div>
+            </div>
+            <div class="category-container" v-if="commandCategories['区域分析']">
+              <span class="category-title">区域分析</span>
+              <div class="command-group">
+                <el-tag 
+                  v-for="cmd in commandCategories['区域分析']"
+                  :key="cmd"
+                  class="command-tag command-example"
+                  @click="applyCommand(cmd)"
+                >
+                  {{ cmd }}
+                </el-tag>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 第三行：系统功能 -->
+          <div class="categories-row">
+            <div class="category-container" v-if="commandCategories['系统功能']">
+              <span class="category-title">{{ category }}</span>
+              <div class="command-group">
+                <el-tag 
+                  v-for="cmd in commandCategories['系统功能']"
+                  :key="cmd"
+                  class="command-tag command-example"
+                  @click="applyCommand(cmd)"
+                >
+                  {{ cmd }}
+                </el-tag>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-
+      
       <el-input
-        ref="messageInputRef"
         v-model="inputMessage"
         type="textarea"
         :rows="3"
-        placeholder="发消息、输入 @ 触发命令"
+        placeholder="输入 @ 查看可用命令..."
+        resize="none"
+        @keydown.enter.prevent="sendMessage"
         @input="handleInput"
-        @keyup.enter.native.exact="sendMessage"
+        ref="inputRef"
       />
-      <el-button
+      
+      <el-button 
+        type="primary" 
         class="send-button"
-        type="primary"
-        :disabled="isLoading"
+        :loading="isLoading"
         @click="sendMessage"
       >
-        <template #icon>
-          <el-icon v-if="!isLoading"><Promotion /></el-icon>
-          <el-icon v-else class="loading-icon"><Loading /></el-icon>
-        </template>
         发送
       </el-button>
     </div>
@@ -156,370 +286,342 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
+import { ElMessage } from 'element-plus'
+import DataChart from '../components/DataChart.vue'
+import MarkdownIt from 'markdown-it'
+import hljs from 'highlight.js'
 import { 
   Promotion, 
   Loading, 
   Operation, 
-  Connection, 
+  Connection,
   DataLine,
   Sunny,
   Timer,
   List,
-  PieChart
+  PieChart,
+  Position,
+  User,
+  Close
 } from '@element-plus/icons-vue'
-import MarkdownIt from 'markdown-it'
-import hljs from 'highlight.js'
-import 'highlight.js/styles/github.css'
 
-const ws = ref(null)
-const messages = ref([])
-const inputMessage = ref('')
-const isLoading = ref(false)
-const messagesContainer = ref(null)
-const messageInputRef = ref(null)
-const showCommandHints = ref(false)
-const filteredCommands = ref({})
-
-// 可用命令配置
-const availableCommands = {
-  '任务管理': [
-    '查询任务',
-    '统计任务',
-    '任务列表',
-    '任务统计',
-    '查找任务',
-    '搜索任务'
-  ],
-  '天气查询': [
-    '天气',
-    '查天气',
-    '查询天气'
-  ],
-  '时间查询': [
-    '时间',
-    '查时间',
-    '当前时间',
-    '现在时间'
-  ]
-}
-
-// 处理输入
-const handleInput = (value) => {
-  // 检查是否需要显示命令提示
-  const lastAtIndex = value.lastIndexOf('@')
-  if (lastAtIndex !== -1) {
-    const afterAt = value.slice(lastAtIndex + 1).trim().toLowerCase()
-    showCommandHints.value = true
-    
-    // 根据输入筛选显示匹配的命令
-    if (afterAt) {
-      filteredCommands.value = {}
-      Object.entries(availableCommands).forEach(([category, commands]) => {
-        const filtered = commands.filter(cmd => cmd.toLowerCase().includes(afterAt))
-        if (filtered.length > 0) {
-          filteredCommands.value[category] = filtered
-        }
-      })
-    } else {
-      filteredCommands.value = availableCommands
-    }
-  } else {
-    showCommandHints.value = false
-  }
-}
-
-// 验证命令格式
-const validateCommand = (text) => {
-  if (!text.startsWith('@')) return { valid: true }
-  
-  const parts = text.slice(1).trim().split(/\s+/)
-  const command = parts[0]
-  
-  // 查找命令所属类别
-  let category = null
-  Object.entries(availableCommands).forEach(([cat, commands]) => {
-    if (commands.includes(command)) {
-      category = cat
-    }
-  })
-  
-  if (!category) {
-    return { valid: false, message: '未知的命令' }
-  }
-  
-  // 验证命令参数
-  switch (category) {
-    case '天气查询':
-      if (parts.length < 2) {
-        return { valid: false, message: '请指定要查询的城市，例如：@天气 北京' }
-      }
-      break
-    case '任务管理':
-      if (parts.length < 1) {
-        return { valid: false, message: '请指定查询条件，例如：@查询任务 pending' }
-      }
-      break
-    case '时间查询':
-      // 时间查询不需要额外参数
-      break
-  }
-  
-  return { valid: true }
-}
-
-// 插入命令
-const insertCommand = (command) => {
-  const cursorPosition = messageInputRef.value.textarea.selectionStart
-  const textBeforeCursor = inputMessage.value.slice(0, cursorPosition)
-  const lastAtIndex = textBeforeCursor.lastIndexOf('@')
-  
-  if (lastAtIndex !== -1) {
-    // 替换@后面的内容
-    inputMessage.value = 
-      textBeforeCursor.slice(0, lastAtIndex) +
-      '@' + command + ' ' +
-      inputMessage.value.slice(cursorPosition)
-    
-    // 聚焦并移动光标
-    nextTick(() => {
-      messageInputRef.value.focus()
-      const newPosition = lastAtIndex + command.length + 2
-      messageInputRef.value.textarea.setSelectionRange(newPosition, newPosition)
-    })
-  }
-  
-  showCommandHints.value = false
-}
-
-// 初始化 markdown-it
+// 初始化 markdown 解析器
 const md = new MarkdownIt({
-  html: true,
-  linkify: true,
-  typographer: true,
-  breaks: true,
   highlight: function (str, lang) {
     if (lang && hljs.getLanguage(lang)) {
       try {
-        return '<pre class="hljs"><code>' +
-               hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
-               '</code></pre>'
+        return hljs.highlight(str, { language: lang }).value
       } catch (__) {}
     }
-    return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>'
+    return ''
   }
 })
 
-// Markdown 渲染函数
-const renderMarkdown = (content) => {
-  try {
-    return md.render(content)
-  } catch (e) {
-    console.error('Markdown rendering error:', e)
-    return content
-  }
+// 响应式状态
+const messages = ref([])
+const inputMessage = ref('')
+const isLoading = ref(false)
+const ws = ref(null)
+const showCommandHints = ref(false)
+const inputRef = ref(null)
+const messagesContainer = ref(null)
+
+// 基础命令和示例命令
+const baseCommands = [
+  '@查询统计',
+  '@查天气',
+  '@查询时间'
+]
+
+const exampleCommands = [
+  // NBA 数据分析示例
+  '@查询统计 各队投篮命中率',
+  '@查询统计 分析不同区域的投篮效率',
+  '@查询统计 球员投篮排名',
+  '@查询统计 总共多少次投篮',
+  '@查询统计 投篮命中率最高的前10名球员',
+  '@查询统计 三分球命中率最高的球队',
+  '@查询统计 各区域投篮次数分布',
+  
+  // 系统功能示例
+  '@查天气 西安',
+  '@查询时间',
+  '@查询统计 查看所有待办任务'
+]
+
+// 命令提示分类
+const commandCategories = {
+  '基础查询': [
+    '@查询统计 总共多少次投篮',
+    '@查询统计 查看所有待办任务'
+  ],
+  '球队分析': [
+    '@查询统计 各队投篮命中率',
+    '@查询统计 三分球命中率最高的球队'
+  ],
+  '球员分析': [
+    '@查询统计 球员投篮排名',
+    '@查询统计 投篮命中率最高的前10名球员'
+  ],
+  '区域分析': [
+    '@查询统计 分析不同区域的投篮效率',
+    '@查询统计 各区域投篮次数分布'
+  ],
+  '系统功能': [
+    '@查天气 西安',
+    '@查询时间'
+  ]
 }
 
-// 连接WebSocket
+// 格式化执行时间（用于实时显示）
+const formatExecutionTime = (startTime) => {
+  if (!startTime) return '0.0s'
+  const elapsed = (Date.now() - startTime) / 1000
+  return elapsed.toFixed(1) + 's'
+}
+
+// 计算最终执行时间
+const calculateExecutionTime = (startTime, endTime) => {
+  if (!startTime || !endTime) return '0.0s'
+  const elapsed = (endTime - startTime) / 1000
+  return elapsed.toFixed(1) + 's'
+}
+
+// WebSocket 连接
 const connectWebSocket = () => {
   ws.value = new WebSocket('ws://localhost:3001/ws')
   
   ws.value.onopen = () => {
     messages.value.push({
-      content: '您好Zapz，小障已上线，今天也要当牛马吗？',
+      content: '您好，我是您的智能助手。请问有什么可以帮您？',
       isAI: true,
       time: new Date()
     })
   }
   
   ws.value.onmessage = (event) => {
-    const data = JSON.parse(event.data)
-    
-    if (data.type === 'stream') {
-      let content = data.content
-      try {
-        // 尝试解析 JSON 内容
-        const jsonData = JSON.parse(data.content)
-  
-        if (jsonData.type === 'table' || jsonData.type === 'single') {
-          // 这是数据库查询结果
-          content = JSON.stringify(jsonData)
-        } else if (jsonData.city) {
-          // 格式化天气信息
-          content = `### ${jsonData.message}\n\n` +
-                   `- 温度：${jsonData.temperature}\n` +
-                   `- 天气：${jsonData.weather}\n` +
-                   `- 湿度：${jsonData.humidity}\n` +
-                   `- 风力：${jsonData.wind}`
-        } else if (jsonData.timestamp) {
-          // 格式化时间信息
-          content = `### 当前时间\n\n${jsonData.formatted}`
+    try {
+      const data = JSON.parse(event.data)
+      const lastMessage = messages.value[messages.value.length - 1]
+      
+      if (data.type === 'stream') {
+        if (lastMessage && lastMessage.isAI) {
+          if (data.content) {
+            if (typeof data.content === 'string' && data.content.startsWith('{')) {
+              // 如果内容是 JSON 字符串，直接设置
+              lastMessage.content = data.content
+              lastMessage.loading = false
+              lastMessage.endTime = Date.now()
+            } else {
+              // 普通文本，追加内容
+              lastMessage.content += data.content
+            }
+          } else {
+            lastMessage.content += data.content
+          }
         }
-      } catch (e) {
-        content = data.content
       }
       
-      // 处理流式响应
-      if (messages.value.length > 0 && messages.value[messages.value.length - 1].isAI) {
-        // 如果最后一条是AI消息，则追加内容
-        messages.value[messages.value.length - 1].content += content
-      } else {
-        // 否则创建新消息
-        messages.value.push({
-          content: content,
-          isAI: true,
-          time: new Date()
-        })
-      }
-    } else if (data.type === 'tool_calls') {
-      // 处理工具调用
-      console.log('收到工具调用:', {
-        工具数量: data.tool_calls.length,
-        调用详情: data.tool_calls.map(call => ({
-          工具名称: call.function?.name,
-          参数: call.function?.arguments
-         }))
-      })
-    } else if (data.type === 'error') {
-      messages.value.push({
-        content: `错误: ${data.content}`,
-        isAI: true,
-        time: new Date()
-      })
+      scrollToBottom()
+    } catch (error) {
+      console.error('Error handling WebSocket message:', error)
     }
-    
-    // 滚动到底部
-    scrollToBottom()
-  }
-  
-  ws.value.onclose = () => {
-    messages.value.push({
-      content: '连接已断开，正在重新连接...',
-      isAI: true,
-      time: new Date()
-    })
-    // 尝试重新连接
-    setTimeout(connectWebSocket, 3000)
   }
   
   ws.value.onerror = (error) => {
     console.error('WebSocket error:', error)
-    messages.value.push({
-      content: '连接错误',
-      isAI: true,
-      time: new Date()
-    })
+    ElMessage.error('连接错误，请刷新页面重试')
   }
 }
+
+// API 配置
+const API_BASE_URL = 'http://localhost:3001'
 
 // 发送消息
 const sendMessage = async () => {
   if (!inputMessage.value.trim() || isLoading.value) return
   
-  // 验证命令格式
-  const validation = validateCommand(inputMessage.value)
-  if (!validation.valid) {
-    messages.value.push({
-      content: validation.message,
-      isAI: true,
-      time: new Date()
-    })
-    return
-  }
-  
-  isLoading.value = true
   try {
-    // 关闭命令提示
+    isLoading.value = true
     showCommandHints.value = false
+    const userMessage = inputMessage.value.trim()
+    
+    // 提取命令内容
+    const commandMatch = userMessage.match(/@([^@]+)/)
+    const commandContent = commandMatch ? commandMatch[1].trim() : userMessage
+    
+    // 判断命令类型
+    const isQueryCommand = commandContent.startsWith('查询统计')
+    const isTimeQuery = commandContent.startsWith('查询时间')
+    const isWeatherQuery = commandContent.startsWith('查天气')
+    const isSpecialCommand = isQueryCommand || isTimeQuery || isWeatherQuery
     
     // 添加用户消息
     messages.value.push({
-      content: inputMessage.value,
+      content: userMessage,
       isAI: false,
       time: new Date()
     })
     
-    // 发送消息到服务器
-    ws.value.send(JSON.stringify({
-      messages: [{
-        role: 'user',
-        content: inputMessage.value
-      }],
-    }))
-    
-    // 清空输入
-    inputMessage.value = ''
-    
-    // 滚动到底部
-    scrollToBottom()
-  } catch (error) {
-    console.error('发送消息失败:', error)
+    // 添加 AI 消息
     messages.value.push({
-      content: '发送消息失败',
+      content: '',
       isAI: true,
+      loading: isSpecialCommand,
+      startTime: Date.now(),
       time: new Date()
     })
+    
+    inputMessage.value = ''
+    await nextTick()
+    scrollToBottom()
+    
+    // 处理时间查询
+    if (isTimeQuery) {
+      try {
+        const response = await fetch('/api/current-time')
+        const data = await response.json()
+        console.log('Time API response:', data)
+        if (data.success) {
+          const lastMessage = messages.value[messages.value.length - 1]
+          lastMessage.content = JSON.stringify({
+            type: 'time',
+            formatted: data.formatted,
+            timestamp: data.timestamp
+          })
+          lastMessage.loading = false
+          lastMessage.endTime = Date.now()
+        } else {
+          throw new Error(data.error || '获取时间失败')
+        }
+        return
+      } catch (error) {
+        console.error('Error fetching time:', error)
+        const lastMessage = messages.value[messages.value.length - 1]
+        lastMessage.content = '获取时间失败：' + error.message
+        lastMessage.loading = false
+        lastMessage.endTime = Date.now()
+        ElMessage.error('获取时间失败：' + error.message)
+        return
+      }
+    }
+    
+    // 发送消息到服务器
+    if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+      ws.value.send(JSON.stringify({
+        messages: [{
+          role: 'user',
+          content: commandMatch ? `@${commandContent}` : userMessage
+        }]
+      }))
+    }
+  } catch (error) {
+    console.error('Error sending message:', error)
   } finally {
     isLoading.value = false
   }
 }
 
+// 处理输入
+const handleInput = (value) => {
+  // 检查是否刚输入了 @ 符号
+  const lastChar = value.slice(-1)
+  if (lastChar === '@') {
+    showCommandHints.value = true
+  } else {
+    showCommandHints.value = false
+  }
+}
+
+// 应用命令
+const applyCommand = (command) => {
+  inputMessage.value = command
+  // 选择命令后自动隐藏提示
+  setTimeout(() => {
+    showCommandHints.value = false
+  }, 100)
+  inputRef.value.focus()
+}
+
+// 快捷命令
+const quickCommand = (command) => {
+  inputMessage.value = command
+  showCommandHints.value = false
+  sendMessage()
+}
+
 // 滚动到底部
-const scrollToBottom = async () => {
-  await nextTick()
-  if (messagesContainer.value) {
-    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-  }
-}
-
-// 组件挂载时连接WebSocket
-onMounted(() => {
-  connectWebSocket()
-  scrollToBottom()
-  window.addEventListener('keydown', handleGlobalKeydown)
-})
-
-// 组件卸载时关闭WebSocket
-onUnmounted(() => {
-  if (ws.value) {
-    ws.value.close()
-  }
-  window.removeEventListener('keydown', handleGlobalKeydown)
-})
-
-// 监听messages变化
-watch(messages, () => {
-  scrollToBottom()
-}, { deep: true })
-
-// 全局事件监听器
-const handleGlobalKeydown = (event) => {
-  if (event.key === 'Enter' && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
-    if (document.activeElement !== messageInputRef.value?.textarea) {
-      event.preventDefault()
-      focusInput()
+const scrollToBottom = () => {
+  nextTick(() => {
+    if (messagesContainer.value) {
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
     }
-  }
+  })
 }
 
-// 聚焦输入框
-const focusInput = () => {
-  if (!isLoading.value) {
-    messageInputRef.value?.focus()
-  }
-}
-
-// 检查是否是数据库查询结果
-const isDbQueryResult = (content) => {
+// 判断消息类型的工具函数
+const isQueryCommand = (content) => {
   try {
+    if (!content) return false
     const data = JSON.parse(content)
-    return data.type === 'table' || data.type === 'single'
-  } catch (e) {
+    // 检查是否包含必要的查询结果字段
+    return data.sql && (
+      // 数组类型的结果
+      (Array.isArray(data.results) && Array.isArray(data.columns)) ||
+      // 单值类型的结果
+      (data.type === 'single' && typeof data.results === 'number')
+    )
+  } catch {
     return false
   }
 }
 
-// 获取消息头部（说明文字）
+const isDbQueryResult = (content) => {
+  try {
+    if (!content) return false
+    const data = JSON.parse(content)
+    // 检查是否是数据库查询结果或特殊格式（天气、时间等）
+    return data.hasOwnProperty('sql') || 
+           data.hasOwnProperty('results') ||
+           data.hasOwnProperty('type') ||
+           data.hasOwnProperty('formatted')  // 用于时间显示
+  } catch {
+    return false
+  }
+}
+
+const renderMarkdown = (content) => {
+  try {
+    // 尝试解析 JSON，如果是特殊格式数据，进行格式化
+    const data = JSON.parse(content)
+    // 处理不同类型的消息
+    if (data.type === 'time') {
+      const timeMarkdown = `## 当前时间\n\n**${data.formatted}**\n\n*时区：北京时间 (UTC+8)*`
+      return md.render(timeMarkdown)
+    } else if (data.weather) {
+      const weatherInfo = []
+      if (data.city) weatherInfo.push(`- 城市：${data.city}`)
+      if (data.weather) weatherInfo.push(`- 天气：${data.weather}`)
+      if (data.temperature) weatherInfo.push(`- 温度：${data.temperature}°C`)
+      if (data.humidity) weatherInfo.push(`- 湿度：${data.humidity}%`)
+      if (data.wind_direction) weatherInfo.push(`- 风向：${data.wind_direction}`)
+      if (data.wind_scale) weatherInfo.push(`- 风力：${data.wind_scale}级`)
+      if (data.update_time) weatherInfo.push(`- 更新时间：${data.update_time}`)
+      
+      const weatherMarkdown = `## 天气信息\n\n${weatherInfo.join('\n')}`
+      return md.render(weatherMarkdown)
+    } else if (data.type === 'query') {
+      // 查询结果显示消息部分
+      return md.render(data.message || '')
+    }
+  } catch {
+    // 如果解析失败，按普通文本处理
+    return md.render(content || '')
+  }
+  return md.render(content || '')
+}
+
 const getMessageHeader = (content) => {
   try {
     const data = JSON.parse(content)
@@ -529,65 +631,6 @@ const getMessageHeader = (content) => {
   }
 }
 
-// 获取查询结果
-const getQueryResults = (content) => {
-  try {
-    const data = JSON.parse(content)
-    if (data.type === 'table') {
-      return Array.isArray(data.results) ? data.results : []
-    }
-    return []
-  } catch {
-    return []
-  }
-}
-
-// 获取表格列
-const getTableColumns = (content) => {
-  const results = getQueryResults(content)
-  if (results.length === 0) return []
-  return Object.keys(results[0])
-}
-
-// 格式化列标签
-const formatColumnLabel = (col) => {
-  return col
-    .split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-}
-
-// 检查是否是单值结果
-const isSingleValue = (content) => {
-  try {
-    const data = JSON.parse(content)
-    return data.type === 'single'
-  } catch {
-    return false
-  }
-}
-
-// 获取单个值
-const getSingleValue = (content) => {
-  try {
-    const data = JSON.parse(content)
-    return data.results
-  } catch {
-    return null
-  }
-}
-
-// 获取统计标题
-const getStatTitle = (content) => {
-  try {
-    const data = JSON.parse(content)
-    return data.message || '查询结果'
-  } catch {
-    return '查询结果'
-  }
-}
-
-// 获取 SQL 语句
 const getQuerySQL = (content) => {
   try {
     const data = JSON.parse(content)
@@ -597,15 +640,217 @@ const getQuerySQL = (content) => {
   }
 }
 
-// 快捷命令处理函数
-const quickCommand = async (command) => {
-  // 构造完整的命令
-  const fullCommand = `@${command}`
-  inputMessage.value = fullCommand
-  
-  // 直接发送消息
-  await sendMessage()
+const getQueryResults = (content) => {
+  try {
+    const data = JSON.parse(content)
+    // 如果是单值结果，转换为表格格式
+    if (data.type === 'single' && typeof data.results === 'number') {
+      return [{
+        [data.columns[0]]: data.results
+      }]
+    }
+    // 数组类型的结果
+    return Array.isArray(data.results) ? data.results : []
+  } catch {
+    return []
+  }
 }
+
+const getTableColumns = (content) => {
+  try {
+    const data = JSON.parse(content)
+    // 确保返回的是数组
+    return Array.isArray(data.columns) ? data.columns : 
+           (data.columns ? [data.columns] : [])
+  } catch {
+    return []
+  }
+}
+
+const formatColumnLabel = (column) => {
+  return column
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+const sortTableColumn = (a, b) => {
+  if (typeof a === 'number' && typeof b === 'number') {
+    return a - b
+  }
+  return String(a).localeCompare(String(b))
+}
+
+const getSummary = (param) => {
+  const { columns, data } = param
+  const sums = []
+  columns.forEach((column, index) => {
+    if (index === 0) {
+      sums[index] = '合计'
+      return
+    }
+    const values = data.map(item => Number(item[column.property]))
+    if (!values.every(value => isNaN(value))) {
+      sums[index] = values.reduce((prev, curr) => {
+        const value = Number(curr)
+        if (!isNaN(value)) {
+          return prev + curr
+        } else {
+          return prev
+        }
+      }, 0)
+    } else {
+      sums[index] = ''
+    }
+  })
+  return sums
+}
+
+// 工具函数
+const shouldShowChart = (content) => {
+  try {
+    if (!content) return false
+    const data = JSON.parse(content)
+    // 检查是否有数值列
+    const hasNumericColumn = data.columns?.some(col => 
+      col.toLowerCase().includes('count') ||
+      col.toLowerCase().includes('percentage') ||
+      col.toLowerCase().includes('rate') ||
+      col.toLowerCase().includes('amount')
+    )
+    // 检查是否是统计类查询
+    const isStatQuery = data.sql?.toLowerCase().includes('group by') ||
+                       data.sql?.toLowerCase().includes('count') ||
+                       data.sql?.toLowerCase().includes('sum') ||
+                       data.sql?.toLowerCase().includes('avg')
+    return hasNumericColumn && isStatQuery
+  } catch {
+    return false
+  }
+}
+
+// 解析消息数据用于图表显示
+const parseMessageData = (content) => {
+  try {
+    const data = JSON.parse(content)
+    return {
+      results: data.results || [],
+      columns: data.columns || [],
+      type: data.type || 'table'
+    }
+  } catch {
+    return {
+      results: [],
+      columns: [],
+      type: 'table'
+    }
+  }
+}
+
+// 格式化表格单元格
+const formatTableCell = (value, column) => {
+  if (value === null || value === undefined) {
+    return '-'
+  }
+  
+  // 如果是 zone/player/team 等文本列，直接返回原值
+  if (['zone', 'player', 'team', 'player_name', 'team_name'].includes(column.toLowerCase())) {
+    return value
+  }
+  
+  // 检查是否是日期
+  const dateValue = new Date(value)
+  if (!isNaN(dateValue.getTime()) && column.toLowerCase().includes('date')) {
+    return dateValue.toLocaleDateString()
+  }
+  
+  // 检查是否是百分比
+  if (typeof value === 'number' && 
+      (column.toLowerCase().includes('percentage') || 
+       column.toLowerCase().includes('ratio') || 
+       column.toLowerCase().includes('rate'))) {
+    return value.toFixed(2) + '%'
+  }
+  
+  // 检查是否是大数值
+  if (typeof value === 'number' && Math.abs(value) >= 1000) {
+    return value.toLocaleString()
+  }
+  
+  return value
+}
+
+// 工具函数
+const isSingleValue = (content) => {
+  try {
+    const data = JSON.parse(content)
+    return data.type === 'single' && typeof data.results === 'number'
+  } catch {
+    return false
+  }
+}
+
+const getSingleValue = (content) => {
+  try {
+    const data = JSON.parse(content)
+    // 格式化大数字
+    if (typeof data.results === 'number') {
+      return data.results.toLocaleString()
+    }
+    return data.results || ''
+  } catch {
+    return null
+  }
+}
+
+const getStatTitle = (content) => {
+  try {
+    const data = JSON.parse(content)
+    return data.message || ''
+  } catch {
+    return ''
+  }
+}
+
+// 添加定时器来更新加载时间
+const updateTimer = ref(null)
+
+// 监听消息列表变化
+watch(messages, (newMessages) => {
+  // 清除之前的定时器
+  if (updateTimer.value) {
+    clearInterval(updateTimer.value)
+  }
+  
+  // 查找正在加载的消息
+  const loadingMessage = newMessages.find(msg => msg.loading)
+  if (loadingMessage) {
+    // 创建新的定时器，每 100ms 更新一次
+    updateTimer.value = setInterval(() => {
+      // 强制更新组件
+      messages.value = [...messages.value]
+    }, 100)
+  }
+}, { deep: true })
+
+// 在组件卸载时清理定时器
+onUnmounted(() => {
+  if (updateTimer.value) {
+    clearInterval(updateTimer.value)
+  }
+})
+
+// 生命周期钩子
+onMounted(() => {
+  connectWebSocket()
+  scrollToBottom()
+})
+
+onUnmounted(() => {
+  if (ws.value) {
+    ws.value.close()
+  }
+})
 </script>
 
 <style scoped>
@@ -628,7 +873,7 @@ const quickCommand = async (command) => {
 }
 
 .message {
-  margin-bottom: 12px;
+  margin-bottom: 20px;
   max-width: 80%;
 }
 
@@ -827,7 +1072,8 @@ const quickCommand = async (command) => {
   margin-bottom: 12px;
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
   position: absolute;
-  bottom: 100%;
+  top: -12px;
+  transform: translateY(-100%);
   left: 0;
   right: 0;
   z-index: 10;
@@ -846,14 +1092,23 @@ const quickCommand = async (command) => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: 200px;
+  max-height: 300px;
   overflow-y: auto;
+}
+
+.categories-row {
+  display: flex;
+  gap: 24px;
+}
+
+.category-container {
+  flex: 1;
+  min-width: 0;  /* 防止flex子项溢出 */
 }
 
 .hint-category {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 8px;
   padding: 4px 0;
 }
@@ -861,19 +1116,56 @@ const quickCommand = async (command) => {
 .category-title {
   font-weight: 500;
   color: var(--el-text-color-secondary);
-  margin-right: 8px;
+  margin-bottom: 4px;
+  font-size: 0.9em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .command-tag {
   cursor: pointer;
   transition: all 0.2s;
-  padding: 4px 8px;
+  padding: 3px 8px;
+  margin: 2px;
+  white-space: nowrap;
+  max-width: calc(50% - 4px);  /* 每行显示2个 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.command-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.command-base {
+  font-weight: 600;
+  background-color: var(--el-color-primary-light-8);
+  border-color: var(--el-color-primary-light-5);
+  color: var(--el-color-primary);
+  max-width: none;  /* 基础命令不限制宽度 */
+}
+
+.command-example {
+  background-color: var(--el-fill-color-light);
+  border-color: var(--el-border-color-lighter);
+  color: var(--el-text-color-regular);
+  font-size: 0.85em;
 }
 
 .command-tag:hover {
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  background-color: var(--el-color-primary-light-9);
+}
+
+.command-base:hover {
+  background-color: var(--el-color-primary-light-7);
+}
+
+.command-example:hover {
+  background-color: var(--el-fill-color);
 }
 
 /* 调整输入框提示文字样式 */
@@ -957,5 +1249,57 @@ const quickCommand = async (command) => {
 
 :deep(.el-button .el-icon) {
   font-size: 16px;
+}
+
+.loading-message {
+  padding: 16px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+}
+
+.loading-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  color: var(--el-text-color-secondary);
+}
+
+.rotating {
+  animation: rotate 1s linear infinite;
+}
+
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.execution-time {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.timer {
+  font-family: monospace;
+  background: rgba(0, 0, 0, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: auto;
+}
+
+.close-hints {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px;
+  color: var(--el-text-color-secondary);
+}
+
+.close-hints:hover {
+  color: var(--el-text-color-primary);
 }
 </style> 

@@ -14,13 +14,13 @@
         active-text-color="var(--primary-color)"
         router
       >
-        <el-menu-item index="/dashboard">
+       <!-- <el-menu-item index="/dashboard">
           <el-icon><Monitor /></el-icon>
           <span>仪表盘</span>
-        </el-menu-item>
+        </el-menu-item>-->
         <el-menu-item index="/chat">
           <el-icon><ChatDotRound /></el-icon>
-          <span>ChatDB</span>
+          <span>一个凑合的聊天仪表盘</span>
         </el-menu-item>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>

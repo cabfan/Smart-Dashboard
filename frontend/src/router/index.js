@@ -20,7 +20,7 @@ const routes = [
   },
   {
     path: '/chat',
-    name: 'ChatDB',
+    name: '一个凑合的聊天仪表盘',
     component: ChatDB
   }
 ]
