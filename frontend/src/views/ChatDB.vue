@@ -7,10 +7,15 @@
           <div v-if="message.isAI" class="markdown-body">
             <!-- 加载状态 -->
             <div v-if="message.loading" class="loading-message">
-              <el-skeleton :rows="3" animated />
+              <!-- 只在查询统计时显示骨架屏 -->
+              <el-skeleton 
+                v-if="message.loadingType === 'query'" 
+                :rows="3" 
+                animated 
+              />
               <div class="loading-text">
                 <el-icon class="rotating"><Loading /></el-icon>
-                正在查询数据，请稍候...
+                {{ message.loadingText || '正在思考中...' }}
                 <span class="timer">{{ formatExecutionTime(message.startTime) }}</span>
               </div>
             </div>
@@ -75,16 +80,28 @@
                     <div class="collapse-header">
                       <el-icon><Document /></el-icon>
                       查询结果
-                      <el-button 
-                        type="primary" 
-                        link 
-                        size="small" 
-                        @click.stop="copyQueryResult(message.content)"
-                        class="copy-button"
-                      >
-                        <el-icon><CopyDocument /></el-icon>
-                        复制JSON
-                      </el-button>
+                      <div class="header-actions">
+                        <el-button 
+                          type="primary" 
+                          link 
+                          size="small" 
+                          @click.stop="analyzeQueryResult(message.content)"
+                          class="analyze-button"
+                        >
+                          <el-icon><ChatLineRound /></el-icon>
+                          AI 数据解读
+                        </el-button>
+                        <el-button 
+                          type="primary" 
+                          link 
+                          size="small" 
+                          @click.stop="copyQueryResult(message.content)"
+                          class="copy-button"
+                        >
+                          <el-icon><CopyDocument /></el-icon>
+                          复制结果JSON
+                        </el-button>
+                      </div>
                     </div>
                   </template>
                   <pre class="json-content">{{ formatJSON(message.content) }}</pre>
@@ -112,75 +129,84 @@
       </div>
     </div>
     
-    <!-- 快捷工具栏 -->
-    <div class="quick-tools">
-      <el-button-group class="tool-group">
-        <!-- NBA 数据分析 -->
-        <el-tooltip 
-          content="查看各队投篮数据" 
-          placement="top"
-          :show-after="500"
-        >
-          <el-button @click="quickCommand('@查询统计 各队投篮命中率')" :icon="PieChart">
-            球队命中率
-          </el-button>
-        </el-tooltip>
-        
-        <el-tooltip 
-          content="查看不同区域投篮数据" 
-          placement="top"
-          :show-after="500"
-        >
-          <el-button @click="quickCommand('@查询统计 分析不同区域的投篮效率')" :icon="Position">
-            区域分析
-          </el-button>
-        </el-tooltip>
-        
-        <el-tooltip 
-          content="查看球员投篮排名" 
-          placement="top"
-          :show-after="500"
-        >
-          <el-button @click="quickCommand('@查询统计 球员投篮排名')" :icon="User">
-            球员排名
-          </el-button>
-        </el-tooltip>
-        
-        <el-tooltip 
-          content="查询天气" 
-          placement="top"
-          :show-after="500"
-        >
-          <el-button @click="quickCommand('@查天气 西安')" :icon="Sunny">
-            天气查询
-          </el-button>
-        </el-tooltip>
-        
-        <el-tooltip 
-          content="查看当前时间" 
-          placement="top"
-          :show-after="500"
-        >
-          <el-button @click="quickCommand('@查询时间')" :icon="Timer">
-            时间
-          </el-button>
-        </el-tooltip>
-        
-        <el-tooltip 
-          content="查看待办任务列表" 
-          placement="top"
-          :show-after="500"
-        >
-          <el-button @click="quickCommand('@查询统计 查看所有待办任务')" :icon="List">
-            待办任务
-          </el-button>
-        </el-tooltip>
-      </el-button-group>
-    </div>
-    
-    <!-- 输入区域 -->
+    <!-- 修改输入区域，整合快捷工具栏 -->
     <div class="chat-input-container">
-      <!-- 命令提示 -->
+      <!-- 快捷工具栏移到这里，作为输入框的上方部分 -->
+      <div class="tools-section">
+        <el-button-group class="tool-group">
+          <el-tooltip 
+            content="查看关键时刻表现" 
+            placement="top"
+            :show-after="500"
+          >
+            <el-button @click="quickCommand('@查询统计 哪些球员在关键时刻（第 4 节最后 3 分钟）至少出手 10 次，投篮命中率最高？')" :icon="Timer">
+              关键时刻
+            </el-button>
+          </el-tooltip>
+
+          <el-tooltip 
+            content="查看各队投篮数据" 
+            placement="top"
+            :show-after="500"
+          >
+            <el-button @click="quickCommand('@查询统计 各队投篮命中率')" :icon="PieChart">
+              球队命中率
+            </el-button>
+          </el-tooltip>
+          
+          <el-tooltip 
+            content="查看不同区域投篮数据" 
+            placement="top"
+            :show-after="500"
+          >
+            <el-button @click="quickCommand('@查询统计 分析不同区域的投篮效率')" :icon="Position">
+              区域分析
+            </el-button>
+          </el-tooltip>
+          
+          <el-tooltip 
+            content="查看球员投篮排名" 
+            placement="top"
+            :show-after="500"
+          >
+            <el-button @click="quickCommand('@查询统计 球员投篮排名')" :icon="User">
+              球员排名
+            </el-button>
+          </el-tooltip>
+          
+          <el-tooltip 
+            content="查询天气" 
+            placement="top"
+            :show-after="500"
+          >
+            <el-button @click="quickCommand('@查天气 西安')" :icon="Sunny">
+              天气查询
+            </el-button>
+          </el-tooltip>
+          
+          <el-tooltip 
+            content="查看当前时间" 
+            placement="top"
+            :show-after="500"
+          >
+            <el-button @click="quickCommand('@查询时间')" :icon="Timer">
+              时间
+            </el-button>
+          </el-tooltip>
+          
+          <el-tooltip 
+            content="查看待办任务列表" 
+            placement="top"
+            :show-after="500"
+          >
+            <el-button @click="quickCommand('@查询统计 查看所有待办任务')" :icon="List">
+              待办任务
+            </el-button>
+          </el-tooltip>
+        </el-button-group>
+      </div>
+
+      <!-- 命令提示部分保持不变 -->
       <div v-if="showCommandHints" class="command-hints">
         <!-- 关闭按钮 -->
         <el-button
@@ -288,6 +314,7 @@
         </div>
       </div>
       
+      <!-- 输入框部分保持不变 -->
       <el-input
         v-model="inputMessage"
         type="textarea"
@@ -331,7 +358,8 @@ import {
   User,
   Close,
   Document,
-  CopyDocument
+  CopyDocument,
+  ChatLineRound
 } from '@element-plus/icons-vue'
 
 // 初始化 markdown 解析器
@@ -395,10 +423,6 @@ const commandCategories = {
   '区域分析': [
     '@查询统计 分析不同区域的投篮效率',
     '@查询统计 各区域投篮次数分布'
-  ],
-  '系统功能': [
-    '@查天气 西安',
-    '@查询时间'
   ]
 }
 
@@ -444,14 +468,17 @@ const connectWebSocket = () => {
             } else {
               // 普通文本，追加内容
               lastMessage.content += data.content
+              // 如果是分析结果（非查询结果），在内容完整后关闭加载状态
+              if (lastMessage.loadingType === 'normal' && data.content.includes('\n\n')) {
+                lastMessage.loading = false
+                lastMessage.endTime = Date.now()
+              }
             }
-          } else {
-            lastMessage.content += data.content
           }
         }
+        
+        scrollToBottom()
       }
-      
-      scrollToBottom()
     } catch (error) {
       console.error('Error handling WebSocket message:', error)
     }
@@ -492,11 +519,13 @@ const sendMessage = async () => {
       time: new Date()
     })
     
-    // 添加 AI 消息
+    // 添加 AI 消息，根据命令类型设置不同的加载文本和类型
     messages.value.push({
       content: '',
       isAI: true,
       loading: isSpecialCommand,
+      loadingType: isQueryCommand ? 'query' : 'normal', // 添加加载类型
+      loadingText: isQueryCommand ? '正在查询数据，请稍候...' : '正在思考中...',
       startTime: Date.now(),
       time: new Date()
     })
@@ -911,6 +940,59 @@ const handleEnterKey = (e) => {
   }
   // 普通 Enter 键不做处理，将自动换行
 }
+
+// 分析查询结果
+const analyzeQueryResult = async (content) => {
+  try {
+    // 构造分析提示
+    const data = JSON.parse(content)
+    const analysisPrompt = `您是一个数据分析助手。请帮我分析以下数据查询结果：
+    
+查询SQL: ${data.sql}
+
+查询结果: ${JSON.stringify(data.results, null, 2)}
+
+分析要求：
+1. 如果结果中包含英文名称（如球员名、球队名等），请在分析时在其后用括号标注中文名称，例如：
+   - Stephen Curry (斯蒂芬·库里)
+   - Golden State Warriors (金州勇士)
+2. 请按以下结构提供分析：
+   - 数据概览和关键发现
+   - 重要趋势或模式
+   - 可能的见解和建议
+   - 异常或值得注意的数据点
+
+请用通俗易懂的语言解释，并尽可能提供具体的数值支持。`
+
+    // 添加一个AI思考消息，使用自定义的加载文本
+    messages.value.push({
+      content: '',
+      isAI: true,
+      loading: true,
+      loadingType: 'normal', // 分析时不显示骨架屏
+      loadingText: '正在分析数据，请稍候...',
+      startTime: Date.now(),
+      time: new Date()
+    })
+
+    // 发送到WebSocket进行分析
+    if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+      ws.value.send(JSON.stringify({
+        messages: [{
+          role: 'user',
+          content: analysisPrompt
+        }]
+      }))
+    }
+
+    // 滚动到底部
+    await nextTick()
+    scrollToBottom()
+  } catch (error) {
+    console.error('分析失败:', error)
+    ElMessage.error('分析失败，请稍后重试')
+  }
+}
 </script>
 
 <style scoped>
@@ -971,6 +1053,16 @@ const handleEnterKey = (e) => {
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
   border-top: 1px solid #e4e7ed;
   margin-top: 20px;
+}
+
+.tools-section {
+  margin-bottom: 16px;
+}
+
+.tool-group {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: left;
 }
 
 .send-button {
@@ -1274,23 +1366,6 @@ const handleEnterKey = (e) => {
   color: var(--el-color-primary);
 }
 
-.quick-tools {
-  padding: 12px 20px;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-  margin: -10px 0 0px;
-  position: relative;
-  z-index: 1;
-}
-
-.tool-group {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
 :deep(.el-button) {
   display: flex;
   align-items: center;
@@ -1439,6 +1514,7 @@ const handleEnterKey = (e) => {
   align-items: center;
   gap: 8px;
   flex: 1;
+  padding-right: 8px;
 }
 
 .copy-button {
@@ -1485,5 +1561,18 @@ const handleEnterKey = (e) => {
 
 :deep(.el-collapse-item__header:hover) {
   background: rgba(0, 0, 0, 0.04);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.analyze-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 </style> 
