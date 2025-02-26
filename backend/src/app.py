@@ -142,127 +142,7 @@ client = AsyncOpenAI(
         "Content-Type": "application/json",
     }
 )
-# 数据库初始化
-def init_db():
-    print("Starting database initialization...")
-    db_path = 'database.sqlite'
-    
-    # 检查数据库文件权限
-    try:
-        if os.path.exists(db_path):
-            print(f"Database file exists at {os.path.abspath(db_path)}")
-        conn = sqlite3.connect(db_path)
-        print("Successfully connected to database")
-    except Exception as e:
-        print(f"Error connecting to database: {e}")
-        return
-    
-    c = conn.cursor()
-    # 创建 NBA 投篮数据表
-    print("Creating nba_shots table...")
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS nba_shots (
-            SEASON_1 TEXT,
-            SEASON_2 TEXT,
-            TEAM_ID TEXT,
-            TEAM_NAME TEXT,
-            PLAYER_ID TEXT,
-            PLAYER_NAME TEXT,
-            GAME_DATE TEXT,
-            GAME_ID TEXT,
-            EVENT_TYPE TEXT,
-            SHOT_MADE INTEGER,
-            ACTION_TYPE TEXT,
-            SHOT_TYPE TEXT,
-            BASIC_ZONE TEXT,
-            ZONE_NAME TEXT,
-            ZONE_ABB TEXT,
-            ZONE_RANGE TEXT,
-            LOC_X REAL,
-            LOC_Y REAL,
-            SHOT_DISTANCE REAL,
-            QUARTER INTEGER,
-            MINS_LEFT INTEGER,
-            SECS_LEFT INTEGER
-        )
-    ''')
-    
-    print("Creating indexes for nba_shots table...")
-    # 为 NBA 投篮数据表创建索引
-    c.execute('''
-        CREATE INDEX IF NOT EXISTS idx_team_name 
-        ON nba_shots(TEAM_NAME)
-    ''')
-    
-    c.execute('''
-        CREATE INDEX IF NOT EXISTS idx_player_name 
-        ON nba_shots(PLAYER_NAME)
-    ''')
-    
-    c.execute('''
-        CREATE INDEX IF NOT EXISTS idx_basic_zone 
-        ON nba_shots(BASIC_ZONE)
-    ''')
-    
-    c.execute('''
-        CREATE INDEX IF NOT EXISTS idx_shot_type 
-        ON nba_shots(SHOT_TYPE)
-    ''')
-    
-    # 复合索引：用于keywords查询
-    c.execute('''
-        CREATE INDEX IF NOT EXISTS idx_clutch_time 
-        ON nba_shots(QUARTER, MINS_LEFT)
-    ''')
-    
-    # 复合索引：用于按日期和球员/球队查询
-    c.execute('''
-        CREATE INDEX IF NOT EXISTS idx_game_date_team 
-        ON nba_shots(GAME_DATE, TEAM_NAME)
-    ''')
-    
-    c.execute('''
-        CREATE INDEX IF NOT EXISTS idx_game_date_player 
-        ON nba_shots(GAME_DATE, PLAYER_NAME)
-    ''')
-    
-    print("Indexes created successfully")
-    
-    print("Creating tasks table...")
-    # 创建任务表
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            description TEXT,
-            status TEXT DEFAULT 'pending',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    print("Inserting test data...")
-    # 添加测试数据
-    c.execute('DELETE FROM tasks')  # 清空现有数据
-    test_data = [
-        ('完成项目报告', '编写第一季度项目进展报告', 'pending', '2024-03-14 10:00:00'),
-        ('客户会议', '与客户讨论新需求', 'completed', '2024-03-13 14:30:00'),
-        ('代码审查', '审查团队提交的新功能代码', 'pending', '2024-03-14 09:00:00'),
-        ('系统测试', '执行系统集成测试', 'pending', '2024-03-14 11:30:00'),
-        ('文档更新', '更新API文档', 'completed', '2024-03-12 16:00:00'),
-    ]
-    
-    c.executemany('''
-        INSERT INTO tasks (title, description, status, created_at)
-        VALUES (?, ?, ?, ?)
-    ''', test_data)
-    
-    conn.commit()
-    conn.close()
-    print("Tasks table initialized")
-    
-    # 导入 NBA 数据
-    print("Starting NBA data import...")
-    import_nba_data()
+
 # WebSocket 连接处理
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -510,18 +390,12 @@ async def startup_event():
     print("Starting application initialization...")
     check_env_variables()
     print("Environment variables checked")
-    
-    # 先初始化数据库和导入数据
-    # init_db()
-    print("Database and data import completed")
-    
-    # 重新初始化 chat_manager 以加载新的训练数据
+
+    # 初始化 chat_manager
     global chat_manager
     chat_manager = ChatManager()
     print("Chat manager reinitialized with new training data")
-    
-    print("Database initialization completed")
-
+    print("initialization completed")
     
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=3001, reload=True)

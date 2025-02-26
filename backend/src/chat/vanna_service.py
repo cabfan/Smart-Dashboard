@@ -32,9 +32,6 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
         # 初始化父类
         ChromaDB_VectorStore.__init__(self, config=config)
         OpenAI_Chat.__init__(self, config=config)
-        
-        
-        # self.db_path = 'database.sqlite'
         # 连接 MySQL 数据库
         mysql_config = config.get('mysql', {})
         self.connect_to_mysql(
@@ -44,31 +41,9 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
             password=mysql_config.get('password'),
             port=mysql_config.get('port', 3306)
         )
-
         # 设置缓存
         self.query_cache = QueryCache()  # 用于缓存SQL查询结果
         self.command_cache = CommandCache()  # 用于缓存自然语言到SQL的转换
-        
-        # 初始化Vanna，包括训练数据
-        self._init_vanna()
-    
-    def _init_vanna(self):
-        """
-        初始化Vanna服务，包括：
-        1. 训练数据库表结构
-        """
-
-        # 获取数据库表结构信息
-        df_information_schema = self.run_sql("SELECT * FROM INFORMATION_SCHEMA.COLUMNS")
-        
-        # 生成训练计划
-        plan = self.get_training_plan_generic(df_information_schema)
-        print("生成的训练计划:", plan)
-        
-        # 执行训练
-        self.train(plan=plan)
-        print("数据库结构训练完成")
-        
     
     async def process_question(self, question: str) -> Dict[str, Any]:
         """
