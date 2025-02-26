@@ -10,7 +10,14 @@ class ChatManager:
         self.vanna_service = VannaService({
             'api_key': os.getenv('OPENAI_API_KEY'),
             'model': os.getenv('OPENAI_MODEL'),
-            'base_url': os.getenv('OPENAI_BASE_URL')
+            'base_url': os.getenv('OPENAI_BASE_URL'),
+            'mysql': {
+                'host': '11.254.2.17',
+                'database': 'soei_oa',
+                'user': 'root',
+                'password': '123456',
+                'port': 3306
+            }
         })
         self.weather_service = WeatherService()
 

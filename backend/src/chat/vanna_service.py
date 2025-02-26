@@ -2,9 +2,10 @@ from vanna.openai.openai_chat import OpenAI_Chat
 from vanna.chromadb.chromadb_vector import ChromaDB_VectorStore
 import sqlite3
 import os
-from typing import Dict, Any
+from typing import Dict, Any, List
 from ..cache.query_cache import QueryCache
 from ..cache.command_cache import CommandCache  # 新增命令缓存
+import hashlib
 
 class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
     """
@@ -32,8 +33,19 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
         ChromaDB_VectorStore.__init__(self, config=config)
         OpenAI_Chat.__init__(self, config=config)
         
-        # 设置数据库路径和缓存
-        self.db_path = 'database.sqlite'
+        
+        # self.db_path = 'database.sqlite'
+        # 连接 MySQL 数据库
+        mysql_config = config.get('mysql', {})
+        self.connect_to_mysql(
+            host=mysql_config.get('host'),
+            dbname=mysql_config.get('database'),
+            user=mysql_config.get('user'),
+            password=mysql_config.get('password'),
+            port=mysql_config.get('port', 3306)
+        )
+
+        # 设置缓存
         self.query_cache = QueryCache()  # 用于缓存SQL查询结果
         self.command_cache = CommandCache()  # 用于缓存自然语言到SQL的转换
         
@@ -44,123 +56,19 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
         """
         初始化Vanna服务，包括：
         1. 训练数据库表结构
-        2. 训练示例SQL查询
-        3. 加载NBA数据文档
-        4. 训练业务文档
         """
-        # 获取并训练数据库表结构
-        ddl = self._get_database_schema()
-        self.train(ddl=ddl)
+
+        # 获取数据库表结构信息
+        df_information_schema = self.run_sql("SELECT * FROM INFORMATION_SCHEMA.COLUMNS")
         
-        # 训练基础任务查询示例
-        self.train(sql="""
-            SELECT * FROM tasks 
-            WHERE status = 'pending' 
-            ORDER BY created_at DESC
-        """)
+        # 生成训练计划
+        plan = self.get_training_plan_generic(df_information_schema)
+        print("生成的训练计划:", plan)
         
-        # 加载并训练NBA数据文档
-        try:
-            if os.path.exists('nba_docs.txt'):
-                print("正在加载NBA文档...")
-                with open('nba_docs.txt', 'r', encoding='utf-8') as f:
-                    nba_docs = f.read()
-                self.train(documentation=nba_docs)
-                print("NBA文档训练成功")
-            else:
-                print("警告: 未找到nba_docs.txt")
-        except Exception as e:
-            print(f"训练NBA文档时出错: {e}")
+        # 执行训练
+        self.train(plan=plan)
+        print("数据库结构训练完成")
         
-        # 训练任务表业务文档
-        self.train(documentation="""
-            tasks 表存储了所有任务记录：
-            - id: 任务ID
-            - title: 任务标题
-            - description: 任务描述
-            - status: 任务状态 (pending/completed)
-            - created_at: 创建时间
-        """)
-        
-        # 训练NBA数据分析示例查询
-        self.train(sql="""
-            -- 查询各队投篮命中率
-            SELECT 
-                TEAM_NAME as team_name,
-                COUNT(*) as attempts,
-                SUM(SHOT_MADE) as made,
-                ROUND(AVG(SHOT_MADE) * 100, 2) as fg_percentage
-            FROM nba_shots
-            GROUP BY TEAM_NAME
-            ORDER BY fg_percentage DESC;
-            
-            -- 查询不同投篮区域的命中率
-            SELECT 
-                BASIC_ZONE as zone,
-                COUNT(*) as attempts,
-                SUM(SHOT_MADE) as made,
-                ROUND(AVG(SHOT_MADE) * 100, 2) as fg_percentage
-            FROM nba_shots
-            GROUP BY BASIC_ZONE
-            ORDER BY attempts DESC;
-            
-            -- 查询球员投篮排名（最少100次出手）
-            SELECT 
-                PLAYER_NAME as player,
-                COUNT(*) as attempts,
-                SUM(SHOT_MADE) as made,
-                ROUND(AVG(SHOT_MADE) * 100, 2) as fg_percentage
-            FROM nba_shots
-            GROUP BY PLAYER_NAME
-            HAVING attempts >= 100
-            ORDER BY fg_percentage DESC
-            LIMIT 10;
-            
-            -- 查询三分球命中率
-            SELECT 
-                TEAM_NAME as team,
-                COUNT(*) as three_attempts,
-                SUM(SHOT_MADE) as three_made,
-                ROUND(AVG(SHOT_MADE) * 100, 2) as three_percentage
-            FROM nba_shots
-            WHERE SHOT_TYPE = '3PT Field Goal'
-            GROUP BY TEAM_NAME
-            ORDER BY three_percentage DESC;
-            
-            -- 查询关键时刻（最后3分钟）投篮
-            SELECT 
-                PLAYER_NAME as player,
-                COUNT(*) as clutch_attempts,
-                SUM(SHOT_MADE) as clutch_made,
-                ROUND(AVG(SHOT_MADE) * 100, 2) as clutch_percentage
-            FROM nba_shots
-            WHERE MINS_LEFT <= 3 AND QUARTER = 4
-            GROUP BY PLAYER_NAME
-            HAVING clutch_attempts >= 10
-            ORDER BY clutch_percentage DESC
-            LIMIT 10;
-        """)
-    
-    def _get_database_schema(self) -> str:
-        """
-        获取数据库中所有表的DDL语句
-        Returns:
-            str: 所有表的建表语句，以换行符连接
-        """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        # 从sqlite_master获取所有表的DDL
-        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table'")
-        tables = cursor.fetchall()
-        
-        ddl = []
-        for table in tables:
-            if table[0]:  # 排除sqlite内部表
-                ddl.append(table[0])
-        
-        conn.close()
-        return "\n".join(ddl)
     
     async def process_question(self, question: str) -> Dict[str, Any]:
         """
@@ -183,7 +91,7 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
             - data/message: 成功时返回数据，失败时返回错误信息
         """
         try:
-            # 1. 尝试从命令缓存获取SQL
+            # 1. 尝试从命令缓存获取SQL 
             cached_sql = self.command_cache.get(question)
             if cached_sql:
                 sql = cached_sql
@@ -211,14 +119,12 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
                     "data": cached_result
                 }
             
-            # 3. 执行查询并获取结果
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute(sql)
+            # 3. 使用 Vanna 的 run_sql 执行查询
+            results_df = self.run_sql(sql)
             
             # 获取列名和查询结果
-            columns = [description[0] for description in cursor.description]
-            results = cursor.fetchall()
+            columns = results_df.columns.tolist()
+            results = results_df.values.tolist()
             
             # 4. 生成结果解释
             try:
@@ -266,3 +172,70 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
                 "success": False,
                 "message": f"查询执行失败: {str(e)}"
             }
+
+    def get_training_data(self) -> List[Dict[str, Any]]:
+        """
+        获取所有训练数据
+        Returns:
+            List[Dict[str, Any]]: 包含所有训练数据的列表，每条数据包含类型和内容
+        """
+        try:
+            # 直接调用父类的 get_training_data 方法获取 DataFrame
+            df = super().get_training_data()
+            
+            # 将 DataFrame 转换为所需的字典列表格式
+            training_data = []
+            
+            for _, row in df.iterrows():
+                data = {
+                    "id": row.get("id", ""),
+                    "type": row.get("training_data_type", ""),  # 确保类型字段存在
+                    "content": row.get("content", ""),
+                }
+                # 如果是问题-SQL对,添加问题字段
+                if row.get("training_data_type") == "sql":
+                    data["question"] = row.get("question", "")
+                training_data.append(data)
+                
+            return training_data
+        except Exception as e:
+            print(f"获取训练数据时出错: {e}")
+            raise
+    def add_training_data(self, data_type: str, content: str, question: str = None) -> str:
+        """
+        添加新的训练数据
+        Args:
+            data_type: 数据类型 (sql/documentation/ddl)
+            content: 训练内容
+            question: 如果是SQL类型，需要提供对应的问题
+        Returns:
+            str: 训练数据的ID
+        """
+        try:
+            if data_type == "sql" and question:
+                # 添加问题-SQL对
+                return super().add_question_sql(question=question, sql=content)
+            elif data_type == "ddl":
+                # 添加DDL语句
+                return super().add_ddl(ddl=content)
+            elif data_type == "documentation":
+                # 添加文档
+                return super().add_documentation(documentation=content)
+            else:
+                raise ValueError("不支持的数据类型或缺少必要参数")
+        except Exception as e:
+            print(f"添加训练数据时出错: {e}")
+            raise
+    def remove_training_data(self, training_id: str) -> bool:
+        """
+        删除指定的训练数据
+        Args:
+            training_id: 训练数据的ID
+        Returns:
+            bool: 删除是否成功
+        """
+        try:
+            return super().remove_training_data(training_id)
+        except Exception as e:
+            print(f"删除训练数据时出错: {e}")
+            raise

@@ -3,28 +3,24 @@
     <!-- 侧边栏 -->
     <el-aside width="260px" class="sidebar">
       <div class="logo">
-        <el-icon class="logo-icon" :size="32"><Monitor /></el-icon>
+        <el-icon class="logo-icon" :size="32">
+          <Monitor />
+        </el-icon>
         <span class="logo-text">Smart Dashboard</span>
       </div>
-      <el-menu
-        :default-active="$route.path"
-        class="sidebar-menu"
-        background-color="var(--menu-bg)"
-        text-color="#fff"
-        active-text-color="var(--primary-color)"
-        router
-      >
-       <!-- <el-menu-item index="/dashboard">
-          <el-icon><Monitor /></el-icon>
-          <span>仪表盘</span>
-        </el-menu-item>-->
+      <el-menu :default-active="$route.path" class="sidebar-menu" background-color="var(--menu-bg)" text-color="#fff"
+        active-text-color="var(--primary-color)" router>
         <el-menu-item index="/chat">
-          <el-icon><ChatDotRound /></el-icon>
+          <el-icon>
+            <ChatDotRound />
+          </el-icon>
           <span>一个凑合的聊天仪表盘</span>
         </el-menu-item>
-        <el-menu-item index="/settings">
-          <el-icon><Setting /></el-icon>
-          <span>系统设置</span>
+        <el-menu-item index="/training">
+          <el-icon>
+            <Document />
+          </el-icon>
+          <span>训练数据管理</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -41,7 +37,9 @@
         </div>
         <div class="header-actions">
           <div class="notification-icon">
-            <el-icon :size="20" color="#666"><Bell /></el-icon>
+            <el-icon :size="20" color="#666">
+              <Bell />
+            </el-icon>
             <span class="notification-badge">3</span>
           </div>
           <el-dropdown>
@@ -76,14 +74,16 @@ import { RouterView } from 'vue-router'
 :global(body) {
   margin: 0;
   padding: 0;
-  overflow: hidden;  /* 隐藏body的滚动条 */
+  overflow: hidden;
+  /* 隐藏body的滚动条 */
   height: 100vh;
 }
 
 .app-container {
   width: 100%;
   height: 100vh;
-  overflow: hidden;  /* 隐藏容器滚动条 */
+  overflow: hidden;
+  /* 隐藏容器滚动条 */
 }
 
 .sidebar {
@@ -119,7 +119,8 @@ import { RouterView } from 'vue-router'
 .main-container {
   margin-left: 260px;
   height: 100vh;
-  overflow: hidden;  /* 隐藏主容器滚动条 */
+  overflow: hidden;
+  /* 隐藏主容器滚动条 */
   background: #fff;
 }
 

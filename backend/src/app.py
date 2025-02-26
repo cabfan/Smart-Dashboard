@@ -22,6 +22,7 @@ def check_env_variables():
     if missing_vars:
         raise EnvironmentError(f"Missing required environment variables: {', '.join(missing_vars)}")
 
+# 导入 NBA 数据
 def import_nba_data():
     """导入 NBA 数据"""
     try:
@@ -133,7 +134,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # 初始化 OpenAI 客户端
 client = AsyncOpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
@@ -142,7 +142,6 @@ client = AsyncOpenAI(
         "Content-Type": "application/json",
     }
 )
-
 # 数据库初始化
 def init_db():
     print("Starting database initialization...")
@@ -159,7 +158,6 @@ def init_db():
         return
     
     c = conn.cursor()
-    
     # 创建 NBA 投篮数据表
     print("Creating nba_shots table...")
     c.execute('''
@@ -265,7 +263,6 @@ def init_db():
     # 导入 NBA 数据
     print("Starting NBA data import...")
     import_nba_data()
-
 # WebSocket 连接处理
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -448,6 +445,65 @@ async def health_check():
             "message": str(e)
         }
 
+
+# 添加新的路由处理向量数据库管理
+@app.get("/api/training/list")
+async def list_training_data():
+    """获取所有训练数据列表"""
+    try:
+        training_data = chat_manager.vanna_service.get_training_data()
+        return {
+            "success": True,
+            "data": training_data
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"获取训练数据失败: {str(e)}"
+        }
+
+@app.post("/api/training/add")
+async def add_training_data(
+    data_type: str,
+    content: str,
+    question: str = None
+):
+    """添加新的训练数据"""
+    try:
+        training_id = chat_manager.vanna_service.add_training_data(
+            data_type=data_type,
+            content=content,
+            question=question
+        )
+        
+        return {
+            "success": True,
+            "data": {
+                "id": training_id,
+                "message": "训练数据添加成功"
+            }
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e)
+        }
+
+@app.delete("/api/training/{training_id}")
+async def delete_training_data(training_id: str):
+    """删除指定的训练数据"""
+    try:
+        chat_manager.vanna_service.remove_training_data(training_id)
+        return {
+            "success": True,
+            "message": "训练数据删除成功"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"删除训练数据失败: {str(e)}"
+        }
+
 # 启动时初始化
 @app.on_event("startup")
 async def startup_event():
@@ -456,7 +512,7 @@ async def startup_event():
     print("Environment variables checked")
     
     # 先初始化数据库和导入数据
-    init_db()
+    # init_db()
     print("Database and data import completed")
     
     # 重新初始化 chat_manager 以加载新的训练数据
@@ -466,5 +522,6 @@ async def startup_event():
     
     print("Database initialization completed")
 
+    
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=3001, reload=True)

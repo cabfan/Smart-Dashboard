@@ -22,6 +22,14 @@ const routes = [
     path: '/chat',
     name: '一个凑合的聊天仪表盘',
     component: ChatDB
+  },
+  {
+    path: '/training',
+    name: 'Training',
+    component: () => import('../views/TrainingView.vue'),
+    meta: {
+      title: '训练数据管理'
+    }
   }
 ]
 

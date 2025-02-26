@@ -16,6 +16,7 @@ dist-ssr
 *.db
 *.sqlite3
 *.db3
+*.pickle
 
 # 环境变量
 .env
