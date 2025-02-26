@@ -1,0 +1,15 @@
+部门信息表：tem_dept，该表记录了松毅软件开发有限公司（松毅科技）的组织架构信息，是一个树型结构。它包含以下字段：
+    - dept_id: 部门编号，主键；
+    - parent_id: 父部门编号，通过它可以实现父子的树形结构；
+    - dept_name：部门名称；
+    - order_num：显示顺序；
+    - leader：负责人；
+    - phone：部门电话；
+    - email：部门邮箱；
+    - status：部门状态（0正常 1停用 2删除）；
+    - create_by：创建者，指的是创建人的名称；
+    - create_time：创建时间；
+    - update_by：更新者，指的是更新人的名称；
+    - update_time：更新时间；
+    - remark：备注；
+    - level：部门的级别，指的是层级，parent_id为0的是1，子级是父的level+1；

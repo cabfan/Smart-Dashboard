@@ -1,11 +1,13 @@
-from vanna.openai.openai_chat import OpenAI_Chat
-from vanna.chromadb.chromadb_vector import ChromaDB_VectorStore
-import sqlite3
 import os
+import hashlib
+import pandas as pd
 from typing import Dict, Any, List
 from ..cache.query_cache import QueryCache
-from ..cache.command_cache import CommandCache  # 新增命令缓存
-import hashlib
+from ..cache.command_cache import CommandCache
+from vanna.openai.openai_chat import OpenAI_Chat
+from vanna.chromadb.chromadb_vector import ChromaDB_VectorStore
+from datetime import datetime
+from decimal import Decimal
 
 class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
     """
@@ -46,6 +48,28 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
         self.query_cache = QueryCache()  # 用于缓存SQL查询结果
         self.command_cache = CommandCache()  # 用于缓存自然语言到SQL的转换
     
+    def _format_results(self, results_df):
+        """格式化查询结果，处理时间戳等特殊类型"""
+        def convert_value(obj):
+            if pd.isna(obj):  # 处理 NaT 和其他空值
+                return None
+            if isinstance(obj, datetime):
+                return obj.strftime('%Y-%m-%d %H:%M:%S')
+            if isinstance(obj, Decimal):
+                return float(obj)  # 将 Decimal 转换为 float
+            return obj
+
+        # 转换 DataFrame 为字典列表
+        results = results_df.to_dict('records')
+        
+        # 处理每一行数据
+        formatted_results = []
+        for row in results:
+            formatted_row = {k: convert_value(v) for k, v in row.items()}
+            formatted_results.append(formatted_row)
+            
+        return formatted_results
+
     async def process_question(self, question: str) -> Dict[str, Any]:
         """
         处理用户的自然语言问题
@@ -97,44 +121,31 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
             
             # 3. 使用 Vanna 的 run_sql 执行查询
             results_df = self.run_sql(sql)
-            
-            # 获取列名和查询结果
+
+            # 格式化结果
+            formatted_results = self._format_results(results_df)
             columns = results_df.columns.tolist()
-            results = results_df.values.tolist()
             
             # 4. 生成结果解释
             try:
-                explanation = self.generate_explanation(
+                explanation = self.generate_summary(
                     question=question,
-                    sql=sql,
-                    results=results
+                    df=results_df
                 )
             except Exception as e:
                 print("生成解释时出错:", e)
-                # 降级处理：使用简单的结果说明
-                if len(results) == 1 and len(results[0]) == 1:
-                    explanation = f"查询结果是: {results[0][0]}"
-                else:
-                    explanation = f"查询到 {len(results)} 条记录"
-            
-            # 5. 格式化查询结果
-            formatted_results = []
-            if len(columns) == 1 and len(results) == 1:
-                formatted_results = results[0][0]  # 单值结果直接返回
-            else:
-                for row in results:
-                    formatted_results.append(dict(zip(columns, row)))  # 将结果转换为字典列表
-            
-            # 6. 构建响应数据
+                explanation = f"查询到 {len(results_df)} 条记录"
+
+            # 5. 构建响应数据
             response_data = {
                 "message": explanation,
                 "sql": sql,
                 "results": formatted_results,
-                "type": "single" if (len(columns) == 1 and len(results) == 1) else "table",
+                "type": "single" if (len(columns) == 1 and len(formatted_results) == 1) else "table",
                 "columns": columns
             }
             
-            # 7. 缓存查询结果
+            # 6. 缓存查询结果
             self.query_cache.set(sql, None, response_data)
             
             return {

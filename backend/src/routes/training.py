@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Form
 from typing import Optional
 
 router = APIRouter(prefix="/api/training", tags=["training"])
@@ -20,7 +20,11 @@ class TrainingRoute:
                 "message": f"获取训练数据失败: {str(e)}"
             }
 
-    async def add_training_data(self, data_type: str, content: str, question: Optional[str] = None):
+    async def add_training_data(self, 
+        data_type: str = Form(...),
+        content: str = Form(...),
+        question: Optional[str] = Form(None)
+    ):
         try:
             training_id = self.chat_manager.vanna_service.add_training_data(
                 data_type=data_type,

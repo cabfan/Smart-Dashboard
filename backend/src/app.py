@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, Form
 from fastapi.middleware.cors import CORSMiddleware
 from openai import AsyncOpenAI
 from src.chat.chat_manager import ChatManager
@@ -8,7 +8,7 @@ import os
 from datetime import datetime
 import pytz
 from dotenv import load_dotenv
-from typing import List, Dict
+from typing import List, Dict, Optional
 import pandas as pd
 import asyncio
 from src.routes.websocket import WebSocketRoute
@@ -65,8 +65,16 @@ async def list_training_data():
     return await training_route.list_training_data()
 
 @app.post("/api/training/add")
-async def add_training_data(data_type: str, content: str, question: str = None):
-    return await training_route.add_training_data(data_type, content, question)
+async def add_training_data(
+    data_type: str = Form(...),
+    content: str = Form(...),
+    question: Optional[str] = Form(None)
+):
+    return await training_route.add_training_data(
+        data_type=data_type,
+        content=content,
+        question=question
+    )
 
 @app.delete("/api/training/{training_id}")
 async def delete_training_data(training_id: str):
