@@ -160,6 +160,35 @@ def init_db():
     
     c = conn.cursor()
     
+    # 创建 NBA 投篮数据表
+    print("Creating nba_shots table...")
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS nba_shots (
+            SEASON_1 TEXT,
+            SEASON_2 TEXT,
+            TEAM_ID TEXT,
+            TEAM_NAME TEXT,
+            PLAYER_ID TEXT,
+            PLAYER_NAME TEXT,
+            GAME_DATE TEXT,
+            GAME_ID TEXT,
+            EVENT_TYPE TEXT,
+            SHOT_MADE INTEGER,
+            ACTION_TYPE TEXT,
+            SHOT_TYPE TEXT,
+            BASIC_ZONE TEXT,
+            ZONE_NAME TEXT,
+            ZONE_ABB TEXT,
+            ZONE_RANGE TEXT,
+            LOC_X REAL,
+            LOC_Y REAL,
+            SHOT_DISTANCE REAL,
+            QUARTER INTEGER,
+            MINS_LEFT INTEGER,
+            SECS_LEFT INTEGER
+        )
+    ''')
+    
     print("Creating indexes for nba_shots table...")
     # 为 NBA 投篮数据表创建索引
     c.execute('''
@@ -182,7 +211,7 @@ def init_db():
         ON nba_shots(SHOT_TYPE)
     ''')
     
-    # 复合索引：用于关键时刻查询
+    # 复合索引：用于keywords查询
     c.execute('''
         CREATE INDEX IF NOT EXISTS idx_clutch_time 
         ON nba_shots(QUARTER, MINS_LEFT)
@@ -427,8 +456,8 @@ async def startup_event():
     print("Environment variables checked")
     
     # 先初始化数据库和导入数据
-    # init_db()
-    # print("Database and data import completed")
+    init_db()
+    print("Database and data import completed")
     
     # 重新初始化 chat_manager 以加载新的训练数据
     global chat_manager
@@ -438,4 +467,4 @@ async def startup_event():
     print("Database initialization completed")
 
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=3001, reload=True) 
+    uvicorn.run("app:app", host="0.0.0.0", port=3001, reload=True)

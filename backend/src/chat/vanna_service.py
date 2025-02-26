@@ -7,53 +7,72 @@ from ..cache.query_cache import QueryCache
 from ..cache.command_cache import CommandCache  # 新增命令缓存
 
 class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
+    """
+    Vanna服务类：集成了向量存储和OpenAI聊天功能，用于处理自然语言到SQL的转换
+    继承自ChromaDB_VectorStore（向量存储）和OpenAI_Chat（OpenAI聊天）
+    """
     def __init__(self, config=None):
-        print("Initializing VannaService with config:", config)
+        """
+        初始化Vanna服务
+        Args:
+            config: 配置字典，必须包含api_key、model和base_url
+        """
+        print("正在初始化 VannaService，配置信息:", config)
         if not config or 'api_key' not in config:
-            raise ValueError("API key is required for VannaService")
+            raise ValueError("VannaService 需要 API 密钥")
         
-        # 确保配置完整
+        # 验证必需的配置项
         required_config = ['api_key', 'model', 'base_url']
         missing_config = [key for key in required_config if key not in config]
-        print("Checking required config. Missing:", missing_config if missing_config else "None")
+        print("检查必需配置。缺失:", missing_config if missing_config else "无")
         if missing_config:
-            raise ValueError(f"Missing required configuration: {', '.join(missing_config)}")
+            raise ValueError(f"缺少必需的配置项: {', '.join(missing_config)}")
         
+        # 初始化父类
         ChromaDB_VectorStore.__init__(self, config=config)
         OpenAI_Chat.__init__(self, config=config)
-        self.db_path = 'database.sqlite'
-        self.query_cache = QueryCache()  # 查询结果缓存
-        self.command_cache = CommandCache()  # 命令到SQL的缓存
         
+        # 设置数据库路径和缓存
+        self.db_path = 'database.sqlite'
+        self.query_cache = QueryCache()  # 用于缓存SQL查询结果
+        self.command_cache = CommandCache()  # 用于缓存自然语言到SQL的转换
+        
+        # 初始化Vanna，包括训练数据
         self._init_vanna()
     
     def _init_vanna(self):
-        """初始化 Vanna，包括训练数据"""
-        # 获取数据库表结构
+        """
+        初始化Vanna服务，包括：
+        1. 训练数据库表结构
+        2. 训练示例SQL查询
+        3. 加载NBA数据文档
+        4. 训练业务文档
+        """
+        # 获取并训练数据库表结构
         ddl = self._get_database_schema()
         self.train(ddl=ddl)
         
-        # 添加一些示例查询
+        # 训练基础任务查询示例
         self.train(sql="""
             SELECT * FROM tasks 
             WHERE status = 'pending' 
             ORDER BY created_at DESC
         """)
         
-        # 加载并训练 NBA 数据文档
+        # 加载并训练NBA数据文档
         try:
             if os.path.exists('nba_docs.txt'):
-                print("Loading NBA documentation...")
+                print("正在加载NBA文档...")
                 with open('nba_docs.txt', 'r', encoding='utf-8') as f:
                     nba_docs = f.read()
                 self.train(documentation=nba_docs)
-                print("NBA documentation trained successfully")
+                print("NBA文档训练成功")
             else:
-                print("Warning: nba_docs.txt not found")
+                print("警告: 未找到nba_docs.txt")
         except Exception as e:
-            print(f"Error training NBA documentation: {e}")
+            print(f"训练NBA文档时出错: {e}")
         
-        # 添加业务文档
+        # 训练任务表业务文档
         self.train(documentation="""
             tasks 表存储了所有任务记录：
             - id: 任务ID
@@ -63,7 +82,7 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
             - created_at: 创建时间
         """)
         
-        # 添加一些示例查询
+        # 训练NBA数据分析示例查询
         self.train(sql="""
             -- 查询各队投篮命中率
             SELECT 
@@ -123,37 +142,58 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
         """)
     
     def _get_database_schema(self) -> str:
-        """获取数据库表结构"""
+        """
+        获取数据库中所有表的DDL语句
+        Returns:
+            str: 所有表的建表语句，以换行符连接
+        """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        # 获取所有表的结构
+        # 从sqlite_master获取所有表的DDL
         cursor.execute("SELECT sql FROM sqlite_master WHERE type='table'")
         tables = cursor.fetchall()
         
         ddl = []
         for table in tables:
-            if table[0]:  # 排除系统表
+            if table[0]:  # 排除sqlite内部表
                 ddl.append(table[0])
         
         conn.close()
         return "\n".join(ddl)
     
     async def process_question(self, question: str) -> Dict[str, Any]:
-        """处理用户问题"""
+        """
+        处理用户的自然语言问题
+        
+        处理流程：
+        1. 检查命令缓存，尝试复用已有的SQL
+        2. 如果缓存未命中，生成新的SQL
+        3. 检查查询缓存，尝试复用查询结果
+        4. 如果查询缓存未命中，执行SQL查询
+        5. 生成结果解释
+        6. 缓存查询结果
+        
+        Args:
+            question: 用户的自然语言问题
+            
+        Returns:
+            Dict包含：
+            - success: 是否成功
+            - data/message: 成功时返回数据，失败时返回错误信息
+        """
         try:
-            # 1. 尝试从命令缓存获取 SQL
+            # 1. 尝试从命令缓存获取SQL
             cached_sql = self.command_cache.get(question)
             if cached_sql:
                 sql = cached_sql
-                print("Command cache hit, using cached SQL")
+                print("命令缓存命中，使用缓存的SQL")
             else:
-                # 生成 SQL
+                # 生成新的SQL
                 sql = self.generate_sql(question)
                 if sql:
-                    # 缓存生成的 SQL
                     self.command_cache.set(question, sql)
-                    print("Cached new SQL for command")
+                    print("已缓存新的SQL命令")
             
             if not sql:
                 return {
@@ -161,7 +201,7 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
                     "message": "无法生成有效的SQL查询"
                 }
             
-            print("Generated SQL:", sql)
+            print("生成的SQL:", sql)
             
             # 2. 尝试从查询缓存获取结果
             cached_result = self.query_cache.get(sql)
@@ -171,16 +211,16 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
                     "data": cached_result
                 }
             
-            # 执行查询
+            # 3. 执行查询并获取结果
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             cursor.execute(sql)
             
-            # 获取列名和结果
+            # 获取列名和查询结果
             columns = [description[0] for description in cursor.description]
             results = cursor.fetchall()
             
-            # 生成解释
+            # 4. 生成结果解释
             try:
                 explanation = self.generate_explanation(
                     question=question,
@@ -188,20 +228,22 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
                     results=results
                 )
             except Exception as e:
-                print("Error generating explanation:", e)
+                print("生成解释时出错:", e)
+                # 降级处理：使用简单的结果说明
                 if len(results) == 1 and len(results[0]) == 1:
                     explanation = f"查询结果是: {results[0][0]}"
                 else:
                     explanation = f"查询到 {len(results)} 条记录"
             
-            # 格式化结果
+            # 5. 格式化查询结果
             formatted_results = []
             if len(columns) == 1 and len(results) == 1:
-                formatted_results = results[0][0]
+                formatted_results = results[0][0]  # 单值结果直接返回
             else:
                 for row in results:
-                    formatted_results.append(dict(zip(columns, row)))
+                    formatted_results.append(dict(zip(columns, row)))  # 将结果转换为字典列表
             
+            # 6. 构建响应数据
             response_data = {
                 "message": explanation,
                 "sql": sql,
@@ -210,7 +252,7 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
                 "columns": columns
             }
             
-            # 缓存查询结果
+            # 7. 缓存查询结果
             self.query_cache.set(sql, None, response_data)
             
             return {
@@ -219,8 +261,8 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
             }
             
         except Exception as e:
-            print("Error in process_question:", e)
+            print("处理问题时出错:", e)
             return {
                 "success": False,
                 "message": f"查询执行失败: {str(e)}"
-            } 
+            }

@@ -19,6 +19,8 @@ dist-ssr
 
 # 环境变量
 .env
+
+.python-version
 *.bin
 # Editor directories and files
 .vscode/*
