@@ -18,14 +18,15 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
         Args:
             config: 配置字典，必须包含api_key、model和base_url
         """
-        print("正在初始化 VannaService，配置信息:", config)
+        # print("正在初始化 VannaService，配置信息:", config)
+        print("正在初始化 VannaService 配置信息")
         if not config or 'api_key' not in config:
             raise ValueError("VannaService 需要 API 密钥")
         
         # 验证必需的配置项
         required_config = ['api_key', 'model', 'base_url']
         missing_config = [key for key in required_config if key not in config]
-        print("检查必需配置。缺失:", missing_config if missing_config else "无")
+        print("检查必需配置。是否缺失:", missing_config if missing_config else "否")
         if missing_config:
             raise ValueError(f"缺少必需的配置项: {', '.join(missing_config)}")
         
