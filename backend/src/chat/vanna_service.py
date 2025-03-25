@@ -4,8 +4,10 @@ import pandas as pd
 from typing import Dict, Any, List
 from ..cache.query_cache import QueryCache
 from ..cache.command_cache import CommandCache
-from vanna.openai.openai_chat import OpenAI_Chat
-from vanna.chromadb.chromadb_vector import ChromaDB_VectorStore
+# from vanna.openai.openai_chat import OpenAI_Chat
+# from vanna.chromadb.chromadb_vector import ChromaDB_VectorStore
+from ..vanna.openai.openai_chat import OpenAI_Chat
+from ..vanna.chromadb.chromadb_vector import ChromaDB_VectorStore
 from datetime import datetime
 from decimal import Decimal
 
@@ -98,10 +100,19 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
                 print("命令缓存命中，使用缓存的SQL")
             else:
                 # 生成新的SQL
-                sql = self.generate_sql(question)
-                if sql:
-                    self.command_cache.set(question, sql)
-                    print("已缓存新的SQL命令")
+                print("开始生成SQL...")
+                try:
+                    sql = self.generate_sql(question)
+                    print(f"SQL生成成功: {sql}")
+                    if sql:
+                        self.command_cache.set(question, sql)
+                        print("已缓存新的SQL命令")
+                except Exception as e:
+                    print(f"生成SQL时出错: {e}")
+                    return {
+                        "success": False,
+                        "message": f"生成SQL失败: {str(e)}"
+                    }
             
             if not sql:
                 return {
@@ -120,7 +131,16 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
                 }
             
             # 3. 使用 Vanna 的 run_sql 执行查询
-            results_df = self.run_sql(sql)
+            try:
+                print("开始执行SQL查询...")
+                results_df = self.run_sql(sql)
+                print(f"查询成功，返回 {len(results_df)} 条记录")
+            except Exception as e:
+                print(f"执行SQL查询时出错: {e}")
+                return {
+                    "success": False,
+                    "message": f"SQL执行失败: {str(e)}"
+                }
 
             # 格式化结果
             formatted_results = self._format_results(results_df)
@@ -128,12 +148,14 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
             
             # 4. 生成结果解释
             try:
+                print("开始生成结果解释...")
                 explanation = self.generate_summary(
                     question=question,
                     df=results_df
                 )
+                print("结果解释生成成功")
             except Exception as e:
-                print("生成解释时出错:", e)
+                print(f"生成解释时出错: {e}")
                 explanation = f"查询到 {len(results_df)} 条记录"
 
             # 5. 构建响应数据
@@ -154,7 +176,9 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
             }
             
         except Exception as e:
-            print("处理问题时出错:", e)
+            print(f"处理问题时出错: {e}")
+            import traceback
+            traceback.print_exc()  # 打印完整的堆栈跟踪
             return {
                 "success": False,
                 "message": f"查询执行失败: {str(e)}"
@@ -164,50 +188,89 @@ class VannaService(ChromaDB_VectorStore, OpenAI_Chat):
         """
         获取所有训练数据
         Returns:
-            List[Dict[str, Any]]: 包含所有训练数据的列表，每条数据包含类型和内容
+            List[Dict[str, Any]]: 包含所有训练数据的列表，每条数据包含类型、内容、标题和备注
         """
         try:
+       
             # 直接调用父类的 get_training_data 方法获取 DataFrame
             df = super().get_training_data()
-            
             # 将 DataFrame 转换为所需的字典列表格式
             training_data = []
             
             for _, row in df.iterrows():
+                # 使用安全的方式获取值，提供默认值防止 None 错误
                 data = {
-                    "id": row.get("id", ""),
-                    "type": row.get("training_data_type", ""),  # 确保类型字段存在
-                    "content": row.get("content", ""),
+                    "id": row.get("id", "") if isinstance(row.get("id"), str) else "",
+                    "type": row.get("training_data_type", "") if isinstance(row.get("training_data_type"), str) else "",
+                    "content": row.get("content", "") if isinstance(row.get("content"), str) else "",
                 }
+                
+                # 处理标题和备注，清理掉可能的 Form 对象字符串
+                title = row.get("title", "")
+                note = row.get("note", "")
+                
+                # 如果标题或备注包含 "annotation=NoneType"，说明是 Form 对象的字符串表示，需要清理
+                if isinstance(title, str) and "annotation=NoneType" in title:
+                    title = ""
+                if isinstance(note, str) and "annotation=NoneType" in note:
+                    note = ""
+                    
+                data["title"] = title
+                data["note"] = note
+                
                 # 如果是问题-SQL对,添加问题字段
                 if row.get("training_data_type") == "sql":
-                    data["question"] = row.get("question", "")
+                    data["question"] = row.get("question", "") if isinstance(row.get("question"), str) else ""
+                else:
+                    data["question"] = ""  # 为非SQL类型也添加空的问题字段
+                    
                 training_data.append(data)
                 
             return training_data
         except Exception as e:
             print(f"获取训练数据时出错: {e}")
-            raise
-    def add_training_data(self, data_type: str, content: str, question: str = None) -> str:
+            # 返回空列表而不是抛出异常，这样前端至少能显示空表格
+            return []
+    def add_training_data(self, data_type: str, content: str, question: str = None, title: str = "", note: str = "") -> str:
         """
         添加新的训练数据
         Args:
             data_type: 数据类型 (sql/documentation/ddl)
             content: 训练内容
             question: 如果是SQL类型，需要提供对应的问题
+            title: 标题（可选）
+            note: 备注（可选）
         Returns:
             str: 训练数据的ID
         """
         try:
+            # 打印接收到的参数，用于调试
+            print(f"接收到的训练数据参数: data_type={data_type}, content={content}, question={question}, title={title}, note={note}")
+            
+            # 确保所有参数都是正确的字符串类型
+            data_type = str(data_type) if data_type is not None else ""
+            content = str(content) if content is not None else ""
+            question = str(question) if question is not None else None
+            title = str(title) if title is not None else ""
+            note = str(note) if note is not None else ""
+            
+            # 清理可能的 Form 对象字符串
+            if isinstance(title, str) and "annotation=NoneType" in title:
+                title = ""
+            if isinstance(note, str) and "annotation=NoneType" in note:
+                note = ""
+            
+            print(f"处理后的参数: data_type={data_type}, content={content}, question={question}, title={title}, note={note}")
+            
             if data_type == "sql" and question:
                 # 添加问题-SQL对
-                return super().add_question_sql(question=question, sql=content)
+                return super().add_question_sql(question=question, sql=content, title=title, note=note)
             elif data_type == "ddl":
                 # 添加DDL语句
-                return super().add_ddl(ddl=content)
+                return super().add_ddl(ddl=content, title=title, note=note)
             elif data_type == "documentation":
                 # 添加文档
-                return super().add_documentation(documentation=content)
+                return super().add_documentation(documentation=content, title=title, note=note)
             else:
                 raise ValueError("不支持的数据类型或缺少必要参数")
         except Exception as e:

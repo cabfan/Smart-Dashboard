@@ -68,12 +68,16 @@ async def list_training_data():
 async def add_training_data(
     data_type: str = Form(...),
     content: str = Form(...),
-    question: Optional[str] = Form(None)
+    question: Optional[str] = Form(None),
+    title: Optional[str] = Form(""),  # 添加标题参数
+    note: Optional[str] = Form("")    # 添加备注参数
 ):
     return await training_route.add_training_data(
         data_type=data_type,
         content=content,
-        question=question
+        question=question,
+        title=title,
+        note=note
     )
 
 @app.delete("/api/training/{training_id}")

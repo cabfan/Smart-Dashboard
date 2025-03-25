@@ -1,0 +1,165 @@
+部门信息表：tem_dept，该表记录了松毅软件开发有限公司（松毅科技）的组织架构信息，是一个树型结构。它包含以下字段：
+    - dept_id: 部门编号，主键；
+    - parent_id: 父部门编号，通过它可以实现父子的树形结构；
+    - dept_name：部门名称；
+    - order_num：显示顺序；
+    - leader：负责人；
+    - phone：部门电话；
+    - email：部门邮箱；
+    - status：部门状态（0正常 1停用 2删除）；
+    - create_by：创建者，指的是创建人的名称；
+    - create_time：创建时间；
+    - update_by：更新者，指的是更新人的名称；
+    - update_time：更新时间；
+    - remark：备注；
+    - level：部门的级别，指的是层级，parent_id为0的是1，子级是父的level+1；
+
+
+流程定义表：flow_definition，存储流程的定义信息，包括流程名称、版本、创建者等。它包含以下字段：
+    - id：主键id；	
+    - flow_code：流程编码；
+    - flow_name：流程名称；
+    - version：流程版本；
+    - is_publish：是否发布（0-未发布 1-已发布 9-失效）；
+    - form_custom：审批表单是否自定义（Y-是 N-否）；
+    - form_path：审批表单路径；	
+    - activity_status：流程激活状态（0-挂起 1-激活）；
+    - listener_type：监听器类型；	
+    - listener_path：监听器路径；		
+    - ext：业务详情,存业务表对象json字符串；
+    - create_time：创建时间；
+    - update_time：更新时间；
+    - del_flag：删除标志，0-未删除 2-已删除；
+    - tenant_id：租户id；
+
+历史任务记录表：flow_his_task，记录已完成的任务信息，用于流程追溯和历史数据分析。它包含以下字段：
+    - id：主键id；
+    - definition_id：对应flow_definition表的id；
+    - instance_id：对应flow_instance表的id；
+    - task_id：对应flow_task表的id；
+    - node_code：开始节点编码；
+    - node_name：开始节点名称；
+    - node_type：开始节点类型（0-开始节点 1-中间节点 2-结束节点 3-互斥网关 4-并行网关）；
+    - target_node_code：目标节点编码；
+    - target_node_name：结束节点名称；
+    - approver：审批者；
+    - cooperate_type：协作方式(1-审批 2-转办 3-委派 4-会签 5-票签 6-加签 7-减签)；
+    - collaborator：协作人；
+    - skip_type：流转类型（PASS-通过 REJECT-退回 NONE-无动作）；
+    - flow_status：流程状态（1-审批中 2-审批通过 9-已退回 10-失效）；
+    - form_custom：审批表单是否自定义（Y-是 N-否）；
+    - form_path：审批表单路径；
+    - message：审批意见；
+    - ext：业务详情 存业务表对象json字符串；
+    - create_time：开始时间；
+    - update_time：完成时间；
+    - del_flag：删除标志，0-未删除 2-已删除；
+    - tenant_id：租户id；
+
+流程实例表：flow_instance，记录每个流程实例的执行情况，包括当前节点、流程状态等。它包含以下字段：
+    - id：主键id；
+    - definition_id：对应flow_definition表的id；
+    - business_id：业务id；
+    - node_type：节点类型（0开始节点 1中间节点 2结束节点 3互斥网关 4并行网关）；
+    - node_code：流程节点编码；
+    - node_name：流程节点名称；
+    - variable：任务变量；			
+    - flow_status：流程状态（0待提交 1审批中 2 审批通过 3自动通过 8已完成 9已退回 10失效）；
+    - activity_status：流程激活状态（0挂起 1激活）；
+    - create_by：创建者；
+    - create_time：创建时间；
+    - update_time：更新时间；
+    - ext：扩展字段，预留给业务系统使用；
+    - del_flag：删除标志，0-未删除 2-已删除；
+    - tenant_id：租户id；
+
+流程节点表：flow_node，定义流程中的各个节点，包括节点类型、编码、名称、权限等。它包含以下字段：
+    - id：主键id
+    - node_type：节点类型（0开始节点 1中间节点 2结束节点 3互斥网关 4并行网关）
+    - definition_id：流程定义id
+    - node_code：流程节点编码
+    - node_name：流程节点名称
+    - permission_flag：权限标识（权限类型:权限标识，可以多个，用逗号隔开）
+    - node_ratio：流程签署比例值
+    - coordinate：坐标
+    - skip_any_node：是否可以退回任意节点（Y是 N否）
+    - listener_type：监听器类型
+    - listener_path：监听器路径
+    - handler_type：处理器类型
+    - handler_path：处理器路径
+    - form_custom：审批表单是否自定义（Y是 N否）
+    - form_path：审批表单路径
+    - version：版本
+    - create_time：创建时间
+    - update_time：更新时间
+    - del_flag：删除标志
+    - tenant_id：租户id
+
+节点跳转关联表：flow_skip，定义节点之间的跳转关系，包括跳转条件、跳转类型等。它包含以下字段：
+    - id：主键id
+    - definition_id：流程定义id
+    - now_node_code：当前流程节点的编码
+    - now_node_type：当前节点类型（0开始节点 1中间节点 2结束节点 3互斥网关 4并行网关）
+    - next_node_code：下一个流程节点的编码
+    - next_node_type：下一个节点类型（0开始节点 1中间节点 2结束节点 3互斥网关 4并行网关）
+    - skip_name：跳转名称
+    - skip_type：跳转类型（PASS审批通过 REJECT退回）
+    - skip_condition：跳转条件
+    - coordinate：坐标
+    - create_time：创建时间
+    - update_time：更新时间
+    - del_flag：删除标志
+    - tenant_id：租户id
+
+待办任务表：flow_task，记录当前待处理的任务，包括任务所属流程实例、节点信息等。它包含以下字段：
+    - id：主键id
+    - definition_id：对应flow_definition表的id
+    - instance_id：对应flow_instance表的id
+    - node_code：节点编码
+    - node_name：节点名称
+    - node_type：节点类型（0开始节点 1中间节点 2结束节点 3互斥网关 4并行网关）
+    - form_custom：审批表单是否自定义（Y是 N否）
+    - form_path：审批表单路径
+    - create_time：创建时间
+    - update_time：更新时间
+    - del_flag：删除标志
+    - tenant_id：租户id
+
+流程用户表：flow_user，管理流程中涉及的用户权限，包括审批人、转办人、委托人等。它包含以下字段：
+    - id：主键id
+    - type：人员类型（1待办任务的审批人权限 2待办任务的转办人权限 3待办任务的委托人权限）
+    - processed_by：权限人
+    - associated：任务表id
+    - create_time：创建时间
+    - create_by：创建人
+    - update_time：更新时间
+    - del_flag：删除标志
+    - tenant_id：租户id
+
+流程管理系统数据库表关联关系及查询数据描述，系统涉及以下几个关键表：
+    流程定义表（flow_definition）
+    流程实例表（flow_instance）
+    流程节点表（flow_node）
+    节点跳转关联表（flow_skip）
+    待办任务表（flow_task）
+    流程用户表（flow_user）
+    历史任务记录表（flow_his_task）
+它们之间的关联关系如下：
+    流程定义表（flow_definition） 与 流程实例表（flow_instance）：
+        关联字段：flow_definition.id ↔ flow_instance.definition_id
+        关系描述：一个流程定义可以对应多个流程实例。
+    流程实例表（flow_instance） 与 待办任务表（flow_task） 及 历史任务记录表（flow_his_task）：
+        关联字段：flow_instance.id ↔ flow_task.instance_id 和 flow_his_task.instance_id
+        关系描述：一个流程实例可以包含多个待办任务和历史任务记录。
+    流程节点表（flow_node） 与 流程定义表（flow_definition）：
+        关联字段：flow_node.definition_id ↔ flow_definition.id
+        关系描述：一个流程定义包含多个流程节点。
+    节点跳转关联表（flow_skip） 与 流程定义表（flow_definition） 及 流程节点表（flow_node）：
+        关联字段：flow_skip.definition_id ↔ flow_definition.id，flow_skip.now_node_code ↔ flow_node.node_code，flow_skip.next_node_code ↔ flow_node.node_code
+        关系描述：节点跳转关联表定义了流程节点之间的跳转关系，属于某个流程定义。
+    待办任务表（flow_task） 与 流程节点表（flow_node）：
+        关联字段：flow_task.node_code ↔ flow_node.node_code
+        关系描述：待办任务对应某个流程节点。
+    流程用户表（flow_user） 与 待办任务表（flow_task）：
+        关联字段：flow_user.associated ↔ flow_task.id
+        关系描述：流程用户表定义了待办任务的处理权限，包括审批人、转办人、委托人等。

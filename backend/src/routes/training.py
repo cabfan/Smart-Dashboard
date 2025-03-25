@@ -23,13 +23,17 @@ class TrainingRoute:
     async def add_training_data(self, 
         data_type: str = Form(...),
         content: str = Form(...),
-        question: Optional[str] = Form(None)
+        question: Optional[str] = Form(None),
+        title: Optional[str] = Form(""),  # 添加标题字段，默认为空字符串
+        note: Optional[str] = Form("")    # 添加备注字段，默认为空字符串
     ):
         try:
             training_id = self.chat_manager.vanna_service.add_training_data(
                 data_type=data_type,
                 content=content,
-                question=question
+                question=question,
+                title=title,
+                note=note
             )
             
             return {

@@ -14,13 +14,13 @@
           <el-icon>
             <ChatDotRound />
           </el-icon>
-          <span>一个凑合的聊天仪表盘</span>
+          <span>Chat Data</span>
         </el-menu-item>
         <el-menu-item index="/training">
           <el-icon>
             <Document />
           </el-icon>
-          <span>训练数据管理</span>
+          <span>Training Data</span>
         </el-menu-item>
       </el-menu>
     </el-aside>

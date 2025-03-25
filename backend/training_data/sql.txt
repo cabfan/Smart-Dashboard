@@ -1,0 +1,18 @@
+所有部门信息
+SELECT
+    dept_id AS 部门编号,
+    parent_id AS 父部门编号,
+    dept_name AS 部门名称,
+    order_num AS 顺序号,
+    leader AS 负责人,
+    phone AS 部门电话,
+    email AS 部门邮箱,
+    status AS 部门邮箱,
+    create_by AS 创建人,
+    create_time AS 创建时间,
+    update_by AS 最后更信人,
+    update_time AS 最后更新时间,
+    remark AS 备注,
+    level AS 级别
+FROM
+    tem_dept;

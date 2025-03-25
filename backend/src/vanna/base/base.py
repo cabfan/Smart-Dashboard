@@ -77,7 +77,7 @@ class VannaBase(ABC):
         self.config = config
         self.run_sql_is_set = False
         self.static_documentation = ""
-        self.dialect = self.config.get("dialect", "SQL")
+        self.dialect = self.config.get("dialect", "MySQL")
         self.language = self.config.get("language", None)
         self.max_tokens = self.config.get("max_tokens", 14000)
 
@@ -121,9 +121,11 @@ class VannaBase(ABC):
             initial_prompt = self.config.get("initial_prompt", None)
         else:
             initial_prompt = None
+
         question_sql_list = self.get_similar_question_sql(question, **kwargs)
         ddl_list = self.get_related_ddl(question, **kwargs)
         doc_list = self.get_related_documentation(question, **kwargs)
+       
         prompt = self.get_sql_prompt(
             initial_prompt=initial_prompt,
             question=question,
@@ -502,7 +504,8 @@ class VannaBase(ABC):
         self, initial_prompt: str, ddl_list: list[str], max_tokens: int = 14000
     ) -> str:
         if len(ddl_list) > 0:
-            initial_prompt += "\n===Tables \n"
+            # initial_prompt += "\n===Tables \n"
+            initial_prompt += "\n===表 \n"
 
             for ddl in ddl_list:
                 if (
@@ -521,7 +524,8 @@ class VannaBase(ABC):
         max_tokens: int = 14000,
     ) -> str:
         if len(documentation_list) > 0:
-            initial_prompt += "\n===Additional Context \n\n"
+            # initial_prompt += "\n===Additional Context \n\n"
+            initial_prompt += "\n===附加上下文 \n\n"
 
             for documentation in documentation_list:
                 if (
@@ -537,7 +541,8 @@ class VannaBase(ABC):
         self, initial_prompt: str, sql_list: list[str], max_tokens: int = 14000
     ) -> str:
         if len(sql_list) > 0:
-            initial_prompt += "\n===Question-SQL Pairs\n\n"
+            # initial_prompt += "\n===Question-SQL Pairs\n\n"
+            initial_prompt += "\n===问题-SQL对\n\n"
 
             for question in sql_list:
                 if (
@@ -582,9 +587,15 @@ class VannaBase(ABC):
             any: The prompt for the LLM to generate SQL.
         """
 
+        # if initial_prompt is None:
+        #     initial_prompt = f"You are a {self.dialect} expert. " + \
+        #     "Please help to generate a SQL query to answer the question. Your response should ONLY be based on the given context and follow the response guidelines and format instructions. "
+        # 作者：Zapz 
+        # 时间：2025-03-24
+        # 优化提示词为中文！
         if initial_prompt is None:
-            initial_prompt = f"You are a {self.dialect} expert. " + \
-            "Please help to generate a SQL query to answer the question. Your response should ONLY be based on the given context and follow the response guidelines and format instructions. "
+            initial_prompt = f"您是一位 {self.dialect} 专家。 " + \
+            "请帮助生成一个SQL查询来回答问题。你的回答应仅基于给定的上下文，并遵循响应指南和格式说明。 "
 
         initial_prompt = self.add_ddl_to_prompt(
             initial_prompt, ddl_list, max_tokens=self.max_tokens
@@ -597,14 +608,27 @@ class VannaBase(ABC):
             initial_prompt, doc_list, max_tokens=self.max_tokens
         )
 
+        # initial_prompt += (
+        #     "===Response Guidelines \n"
+        #     "1. If the provided context is sufficient, please generate a valid SQL query without any explanations for the question. \n"
+        #     "2. If the provided context is almost sufficient but requires knowledge of a specific string in a particular column, please generate an intermediate SQL query to find the distinct strings in that column. Prepend the query with a comment saying intermediate_sql \n"
+        #     "3. If the provided context is insufficient, please explain why it can't be generated. \n"
+        #     "4. Please use the most relevant table(s). \n"
+        #     "5. If the question has been asked and answered before, please repeat the answer exactly as it was given before. \n"
+        #     f"6. Ensure that the output SQL is {self.dialect}-compliant and executable, and free of syntax errors. \n"
+        # )
+
+        # 作者：Zapz 
+        # 时间：2025-03-24
+        # 优化提示词为中文！
         initial_prompt += (
-            "===Response Guidelines \n"
-            "1. If the provided context is sufficient, please generate a valid SQL query without any explanations for the question. \n"
-            "2. If the provided context is almost sufficient but requires knowledge of a specific string in a particular column, please generate an intermediate SQL query to find the distinct strings in that column. Prepend the query with a comment saying intermediate_sql \n"
-            "3. If the provided context is insufficient, please explain why it can't be generated. \n"
-            "4. Please use the most relevant table(s). \n"
-            "5. If the question has been asked and answered before, please repeat the answer exactly as it was given before. \n"
-            f"6. Ensure that the output SQL is {self.dialect}-compliant and executable, and free of syntax errors. \n"
+            "===响应指南 \n"
+            "1. 如果提供的上下文足够，请为问题生成一个有效的SQL查询，无需任何解释。 \n"
+            "2. 如果提供的上下文几乎足够，但需要知道特定列中的特定字符串，请生成一个中间SQL查询，以查找该列中的不同字符串。在查询前添加一条注释，说明intermediate_sql \n"
+            "3. 如果提供的上下文不足，请解释为什么无法生成查询。 \n"
+            "4. 请使用最相关的表。 \n"
+            "5. 如果问题之前已经被问过并回答过，请完全按照之前给出的答案重复回答。 \n"
+            f"6. 确保输出的SQL符合 {self.dialect} 规范，可执行，并且没有语法错误。 \n"
         )
 
         message_log = [self.system_message(initial_prompt)]
